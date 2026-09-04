@@ -827,41 +827,6 @@ exactly that reason):
           display:block!important;
       }</style></aside>
 </section>
-<section id="the-kernel-implementation-dominates" class="slide level2">
-<h2>The kernel implementation dominates</h2>
-
-<img data-src="assets/figures/CPU/leaftop2_ablation.png" class="quarto-figure quarto-figure-center r-stretch" style="width:58.0%"><div style="text-align: center;">
-<p><mark><strong>Implementation of top-k kernels has highest impact on running time</strong></mark> <!-- Tobias's v11 wording (P73); the evidence here is P15 --></p>
-</div>
-<div class="fragment" style="text-align: center; font-size: 0.9em;">
-<p>Same leaf, same core: <strong>12.90 ms → 1.04 ms</strong> — <strong>12.4×</strong> from the kernel alone. <!-- P15 --></p>
-</div>
-<!-- v3.2-VecDB (Tobias 2026-09-03: "S17 — is this the right plot? It's from the first
-     paper... for PiPNN II we have that supplemental fig showing all the optimizations"):
-     figure swapped to THIS paper's leaf-top-2 kernel ablation (qpipnn_paper
-     results/CPU/leaftop2_ablations/leaftop2_ablation.pdf, fig:leaftop2-ablation,
-     05_Experiments.tex:217-249): horizontal stacked bars, eight CUMULATIVE stages top to
-     bottom from PiPNN I's kernel (Eigen FP32 + VQSort) to this paper's (+ SIMD Scatter);
-     x = time in ms, lower is better (printed on the axis, so no .axis-hint); segments =
-     Prepare / GEMM / Filtering / Other. Banked: the endpoints only (P15: 12.90 -> 1.04 ms,
-     12.4x). The per-bar GMAC/s labels, per-stage factors and filtering shares are
-     PROVISIONAL (claim bank provisional table) — spoken at most, never slide text. One
-     benchmark, one unnamed 1M x 768-d dataset, 800-point leaf, single core — do not imply
-     generality. The first paper's Eigen/Highway ablation (P73) moved to backup. -->
-<aside class="notes">
-<p>About 35 seconds. This paper’s own ablation: one leaf of 800 points on a single core, the bars cumulative top to bottom. The top bar is PiPNN I’s leaf kernel — an fp32 Eigen GEMM plus a vectorized partial sort, already a tuned kernel. The first drop is quantization: the same scores on integer dot-product instructions. Everything after is layout and fusion — unrolling, scoring only the lower triangle, and vectorizing the top-2 update, the largest single jump. Click: 12.9 milliseconds to 1.04, 12.4 times — same algorithm, same leaf, only the kernel changed (P15). Stage numbers beyond the endpoints are provisional, so do not quote them. The question this paper asks is therefore how to compute a batched top-k, and the answer has two moves — next slide.</p>
-<style type="text/css">
-        span.MJX_Assistive_MathML {
-          position:absolute!important;
-          clip: rect(1px, 1px, 1px, 1px);
-          padding: 1px 0 0 0!important;
-          border: 0!important;
-          height: 1px!important;
-          width: 1px!important;
-          overflow: hidden!important;
-          display:block!important;
-      }</style></aside>
-</section>
 <section id="cpu-quantize-then-fuse-the-top-k" class="slide level2">
 <h2>CPU: quantize, then fuse the top-k</h2>
 <svg viewbox="0 0 720 330" style="width: 56%; display: block; margin: 0.2em auto 0;" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="PiPNN I scores fp32 vectors into a stored score matrix and sorts each row for its top-2; this paper scores int8 codes and selects the top-2 in one fused pass, never storing the matrix">
@@ -889,7 +854,42 @@ exactly that reason):
      is quantizer-invariant — TQ4 misses the 0.9 recall floor on five GPU datasets (P88), so
      the slide says "bit width still matters" and the notes carry the caveat. -->
 <aside class="notes">
-<p>About 30 seconds; a transition, not an explanation. Top row, PiPNN I: score the fp32 vectors with a GEMM, store the whole distance matrix, then sort every row for its top-2. Bottom row, this paper. Bullet one: quantization’s job here is mostly to feed the hardware — byte codes are what the integer dot-product instructions want, VNNI on CPU, WGMMA on GPU — and it cuts memory traffic, which is what binds on the GPU at high dimension (P85). Bullet two, for the quantization people in the room: the kernels are written against a template, integer inner product plus a small per-vector correction, so the choice of quantizer is secondary — RaBitQ, DRIVE and EDEN would plug into the same kernels (P86); our TurboQuant variant replaces the residual QJL sketch with an extra codebook bit plus a per-vector rescale (P51). Bit width does still matter: TQ4 misses the recall floor on five GPU datasets, which is why the GPU headline uses RSQ8 (P88). Bullet three, fusion: each score drops straight into the top-2 and the matrix is never stored. Instruction-level detail is in backup. Next: what it buys.</p>
+<p>About 30 seconds; a transition, not an explanation. Top row, PiPNN I: score the fp32 vectors with a GEMM, store the whole distance matrix, then sort every row for its top-2. Bottom row, this paper. Bullet one: quantization’s job here is mostly to feed the hardware — byte codes are what the integer dot-product instructions want, VNNI on CPU, WGMMA on GPU — and it cuts memory traffic, which is what binds on the GPU at high dimension (P85). Bullet two, for the quantization people in the room: the kernels are written against a template, integer inner product plus a small per-vector correction, so the choice of quantizer is secondary — RaBitQ, DRIVE and EDEN would plug into the same kernels (P86); our TurboQuant variant replaces the residual QJL sketch with an extra codebook bit plus a per-vector rescale (P51). Bit width does still matter: TQ4 misses the recall floor on five GPU datasets, which is why the GPU headline uses RSQ8 (P88). Bullet three, fusion: each score drops straight into the top-2 and the matrix is never stored. Instruction-level detail is in backup. Next: what those two moves do to the kernel, stage by stage.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="the-kernel-implementation-dominates" class="slide level2">
+<h2>The kernel implementation dominates</h2>
+
+<img data-src="assets/figures/CPU/leaftop2_ablation.png" class="quarto-figure quarto-figure-center r-stretch" style="width:58.0%"><div style="text-align: center;">
+<p><mark><strong>Implementation of top-k kernels has highest impact on running time</strong></mark> <!-- Tobias's v11 wording (P73); the evidence here is P15 --></p>
+</div>
+<div class="fragment" style="text-align: center; font-size: 0.9em;">
+<p>Same leaf, same core: <strong>12.90 ms → 1.04 ms</strong> — <strong>12.4×</strong> from the kernel alone. <!-- P15 --></p>
+</div>
+<!-- v3.2-VecDB (Tobias 2026-09-03: "S17 — is this the right plot? It's from the first
+     paper... for PiPNN II we have that supplemental fig showing all the optimizations"):
+     figure swapped to THIS paper's leaf-top-2 kernel ablation (qpipnn_paper
+     results/CPU/leaftop2_ablations/leaftop2_ablation.pdf, fig:leaftop2-ablation,
+     05_Experiments.tex:217-249): horizontal stacked bars, eight CUMULATIVE stages top to
+     bottom from PiPNN I's kernel (Eigen FP32 + VQSort) to this paper's (+ SIMD Scatter);
+     x = time in ms, lower is better (printed on the axis, so no .axis-hint); segments =
+     Prepare / GEMM / Filtering / Other. Banked: the endpoints only (P15: 12.90 -> 1.04 ms,
+     12.4x). The per-bar GMAC/s labels, per-stage factors and filtering shares are
+     PROVISIONAL (claim bank provisional table) — spoken at most, never slide text. One
+     benchmark, one unnamed 1M x 768-d dataset, 800-point leaf, single core — do not imply
+     generality. The first paper's Eigen/Highway ablation (P73) moved to backup. -->
+<aside class="notes">
+<p>About 35 seconds. This paper’s own ablation: one leaf of 800 points on a single core, the bars cumulative top to bottom. The top bar is PiPNN I’s leaf kernel — an fp32 Eigen GEMM plus a vectorized partial sort, already a tuned kernel. The first drop is quantization: the same scores on integer dot-product instructions. Everything after is layout and fusion — unrolling, scoring only the lower triangle, and vectorizing the top-2 update, the largest single jump. Click: 12.9 milliseconds to 1.04, 12.4 times — same algorithm, same leaf, only the kernel changed (P15). Stage numbers beyond the endpoints are provisional, so do not quote them. That is what the two moves on the previous slide bought. Then what it does to build times.</p>
 <style type="text/css">
         span.MJX_Assistive_MathML {
           position:absolute!important;
