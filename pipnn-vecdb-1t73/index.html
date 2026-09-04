@@ -1,0 +1,2482 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta name="robots" content="noindex, nofollow">
+<script src="talk_vecdb_files/libs/clipboard/clipboard.min.js"></script>
+<script src="talk_vecdb_files/libs/quarto-html/tabby.min.js"></script>
+<script src="talk_vecdb_files/libs/quarto-html/popper.min.js"></script>
+<script src="talk_vecdb_files/libs/quarto-html/tippy.umd.min.js"></script>
+<link href="talk_vecdb_files/libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="talk_vecdb_files/libs/quarto-html/light-border.css" rel="stylesheet">
+<link href="talk_vecdb_files/libs/quarto-html/quarto-syntax-highlighting-15634bcf2e68342d4ad2dfa704d543f6.css" rel="stylesheet" id="quarto-text-highlighting-styles"><meta charset="utf-8">
+  <meta name="generator" content="quarto-1.9.38">
+
+  <meta name="author" content="Tobias Rubel1 · Richard Wen1 · Guy Blelloch2,3 · Laxman Dhulipala1,3 · Lars Gottesbüren3 · Jakub Łącki3 · Vahab Mirrokni3">
+  <title>Turbocharging PiPNN for Proximity and k-NN Graph Building</title>
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, minimal-ui">
+  <link rel="stylesheet" href="talk_vecdb_files/libs/revealjs/dist/reset.css">
+  <link rel="stylesheet" href="talk_vecdb_files/libs/revealjs/dist/reveal.css">
+  <style>
+    /* Default styles provided by pandoc.
+    ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+    */
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    ul.task-list{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+      vertical-align: middle;
+    }
+  </style>
+  <link rel="stylesheet" href="talk_vecdb_files/libs/revealjs/dist/theme/quarto-1bc2852ab5f0b1f2563101a4b3ad69d1.css">
+  <script>window.backupDefine = window.define; window.define = undefined;</script><script src="https://cdn.jsdelivr.net/npm/katex@latest/dist/katex.min.js"></script>
+  <script>document.addEventListener("DOMContentLoaded", function () {
+ var mathElements = document.getElementsByClassName("math");
+ var macros = [];
+ for (var i = 0; i < mathElements.length; i++) {
+  var texText = mathElements[i].firstChild;
+  if (mathElements[i].tagName == "SPAN") {
+   katex.render(texText.data, mathElements[i], {
+    displayMode: mathElements[i].classList.contains('display'),
+    throwOnError: false,
+    macros: macros,
+    fleqn: false
+   });
+}}});
+  </script>
+  <script>window.define = window.backupDefine; window.backupDefine = undefined;</script><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@latest/dist/katex.min.css">
+  <link href="talk_vecdb_files/libs/revealjs/plugin/quarto-line-highlight/line-highlight.css" rel="stylesheet">
+  <link href="talk_vecdb_files/libs/revealjs/plugin/reveal-menu/menu.css" rel="stylesheet">
+  <link href="talk_vecdb_files/libs/revealjs/plugin/reveal-menu/quarto-menu.css" rel="stylesheet">
+  <link href="talk_vecdb_files/libs/revealjs/plugin/quarto-support/footer.css" rel="stylesheet">
+  <style type="text/css">
+    .reveal div.sourceCode {
+      margin: 0;
+      overflow: auto;
+    }
+    .reveal div.hanging-indent {
+      margin-left: 1em;
+      text-indent: -1em;
+    }
+    .reveal .slide:not(.center) {
+      height: 100%;
+    }
+    .reveal .slide.scrollable {
+      overflow-y: auto;
+    }
+    .reveal .footnotes {
+      height: 100%;
+      overflow-y: auto;
+    }
+    .reveal .slide .absolute {
+      position: absolute;
+      display: block;
+    }
+    .reveal .footnotes ol {
+      counter-reset: ol;
+      list-style-type: none; 
+      margin-left: 0;
+    }
+    .reveal .footnotes ol li:before {
+      counter-increment: ol;
+      content: counter(ol) ". "; 
+    }
+    .reveal .footnotes ol li > p:first-child {
+      display: inline-block;
+    }
+    .reveal .slide ul,
+    .reveal .slide ol {
+      margin-bottom: 0.5em;
+    }
+    .reveal .slide ul li,
+    .reveal .slide ol li {
+      margin-top: 0.4em;
+      margin-bottom: 0.2em;
+    }
+    .reveal .slide ul[role="tablist"] li {
+      margin-bottom: 0;
+    }
+    .reveal .slide ul li > *:first-child,
+    .reveal .slide ol li > *:first-child {
+      margin-block-start: 0;
+    }
+    .reveal .slide ul li > *:last-child,
+    .reveal .slide ol li > *:last-child {
+      margin-block-end: 0;
+    }
+    .reveal .slide .columns:nth-child(3) {
+      margin-block-start: 0.8em;
+    }
+    .reveal blockquote {
+      box-shadow: none;
+    }
+    .reveal .tippy-content>* {
+      margin-top: 0.2em;
+      margin-bottom: 0.7em;
+    }
+    .reveal .tippy-content>*:last-child {
+      margin-bottom: 0.2em;
+    }
+    .reveal .slide > img.stretch.quarto-figure-center,
+    .reveal .slide > img.r-stretch.quarto-figure-center {
+      display: block;
+      margin-left: auto;
+      margin-right: auto; 
+    }
+    .reveal .slide > img.stretch.quarto-figure-left,
+    .reveal .slide > img.r-stretch.quarto-figure-left  {
+      display: block;
+      margin-left: 0;
+      margin-right: auto; 
+    }
+    .reveal .slide > img.stretch.quarto-figure-right,
+    .reveal .slide > img.r-stretch.quarto-figure-right  {
+      display: block;
+      margin-left: auto;
+      margin-right: 0; 
+    }
+  </style>
+  <style>
+    /* Self-hosted variable fonts (assets/fonts/, latin subset, woff2). */
+    @font-face {
+      font-family: "Space Grotesk";
+      src: url("assets/fonts/SpaceGrotesk-var.woff2") format("woff2");
+      font-weight: 300 700;
+      font-style: normal;
+      font-display: swap;
+    }
+    @font-face {
+      font-family: "Inter";
+      src: url("assets/fonts/Inter-var.woff2") format("woff2");
+      font-weight: 100 900;
+      font-style: normal;
+      font-display: swap;
+    }
+  </style>
+</head>
+<body class="quarto-light">
+  <div class="reveal">
+    <div class="slides">
+
+<section id="title-slide" class="quarto-title-block center">
+  <h1 class="title">Turbocharging PiPNN for Proximity and k-NN Graph Building</h1>
+  <p class="subtitle">VecDB @ VLDB 2026</p>
+
+<div class="quarto-title-authors">
+<div class="quarto-title-author">
+<div class="quarto-title-author-name">
+Tobias Rubel<sup>1</sup> · Richard Wen<sup>1</sup> · Guy Blelloch<sup>2,3</sup> · Laxman Dhulipala<sup>1,3</sup> · Lars Gottesbüren<sup>3</sup> · Jakub Łącki<sup>3</sup> · Vahab Mirrokni<sup>3</sup> 
+</div>
+        <p class="quarto-title-affiliation">
+            <sup>1</sup> University of Maryland &nbsp;·&nbsp; <sup>2</sup> Carnegie Mellon University &nbsp;·&nbsp; <sup>3</sup> Google Research &nbsp;&nbsp;|&nbsp;&nbsp; VecDB @ VLDB 2026
+          </p>
+    </div>
+</div>
+
+</section>
+<section id="tldr" class="slide level2">
+<h2>TL;DR</h2>
+<!--
+Agent note (kept below the first heading — ANY content before it, even a bare HTML comment,
+renders as an empty phantom slide; the section banner below sits under this heading for
+exactly that reason):
+- Read AGENTS.md before editing this deck.
+- Deck structure: v3-VecDB (2026-09-02, "closer to the KDD talk"). The 15:00-speaking oral
+  for "Turbocharging PiPNN for Proximity and k-NN Graph Building" at the 2nd Workshop on
+  Vector Databases (VecDB) @ VLDB 2026 (Fri 2026-09-04, Grand Ballroom E; OpenReview
+  8GzbSQMrLA). Timing table: docs/vecdb_plan_sketch.md (`make check-timebox-vecdb`,
+  `make render-vecdb`). 21 content slides + 3 Part dividers + the title slide.
+- v3-VecDB changes over v2 (Tobias, 2026-09-02):
+  (1) KDD-deck STRUCTURE: three Part dividers (Background / PiPNN / Turbocharging PiPNN);
+      Pip fades up on the Part II divider as at KDD, so the walkthrough's corner cutout is
+      gone. A Background act borrowed from talk_kdd.qmd motivates build time BEFORE the
+      bottleneck: "Graph indexes: fast to query, slow to build" (beam_loop_kdd side clip +
+      "This talk: build time" mark) and "Why build time matters" (KDD bullets verbatim),
+      then "The search bottleneck" (KDD title; the recipe line + P78 table + goal mark).
+  (2) Slide text TERSENED to the KDD register: short bullets, plain claim headlines, no
+      clause-stacked sentences; the KDD-delivered PiPNN I slides are back to their KDD
+      wording (picking bullets; HashPrune's one-sentence rule).
+  (3) Kernel detail REPLACED by an overview that gets to results and emphasizes top-k
+      algorithmically. CPU act: pivot ("Everything left is a top-k problem") → "The kernel
+      implementation dominates" (P73 leaf-kernel ablation, NEW in this deck, mark in
+      Tobias's v11 wording) → ONE overview slide "Fast top-k on CPU: quantize, then fuse"
+      (vnni_topk clip; carries the P14 quality receipt) → CPU results. GPU act: ONE
+      overview slide "GPiPNN: make the work uniform" (P35 mismatches + flatten / regularize
+      / one segmented launch, bucket_even clip) → "HashPrune without locks" (sort-and-merge
+      + the theorem, record_same payoff clip) → GPU build times → GPU quality.
+      Demoted to backup: "Quantize the comparisons" (as "the quantization codes"), "One
+      template, any quantizer" (merged into "the template is the contribution"), "Why
+      PiPNN doesn't just port to the GPU", and "Sort, don't lock" (its record_sortmerge
+      clip now rides the sort-and-merge backup).
+- v3.1-VecDB (Tobias, 2026-09-02, same-day feedback keyed to rendered slide numbers):
+  S16 retitled "Top-k is the majority of the work"; S18 ("Fast top-k on CPU: quantize,
+  then fuse"), S20 ("GPiPNN: make the work uniform") and S21 ("HashPrune without locks")
+  DROPPED — "in their place transitional figures that are higher level; no need to
+  explain the kernels, just mention fusion, regularization etc." → ONE transitional
+  figure per platform: "CPU: quantize, then fuse the top-k" (static inline SVG:
+  PiPNN I's score→store→sort row vs this paper's int8 codes→one fused pass, matrix never
+  stored; one caption sentence) and "GPU: regularize the work, drop the locks"
+  (bucket_even clip + one caption sentence naming sort-and-merge and the theorem). The
+  dropped slides live in backup ("the CPU kernel — quantize, then fuse" with the
+  vnni_topk clip + P14 receipt; "any order, same reservoir" with record_same). Main line
+  is now title + 21 content slides + 3 dividers; the ~1:20 freed went to the PiPNN
+  mechanism act and the results slides.
+- v3.2-VecDB (Tobias, 2026-09-03, feedback keyed to rendered slide numbers of v3.1): S2 TL;DR
+  payoff line now speaks to billion-point INDEX builds (P90, new) instead of the 10-NN graph;
+  S3 Outline's "This paper" bullet carries three sub-bullets; a "Nearest neighbor search"
+  slide (talk_kdd.qmd's, verbatim) opens Part I; S10 partitioning's click-4 mark is the
+  top-k statement (P28 spoken); S12-S14 (pruning problem / HashPrune / history-independence)
+  FOLDED into one slide "HashPrune: an online, order-independent prune" (the three live in
+  backup); S17 shows THIS paper's leaf-top-2 stage ablation (P15) instead of the first
+  paper's Eigen ablation (P73, now backup); S18 gains two bullets (quantization feeds
+  integer SIMD; template-not-quantizer, "bit width still matters"); S19 split into "CPU
+  build times" (tab:cpu_build) + "Index quality preserved" (the QPS plot, P14); S20 GPU
+  transition reframed (second pass, after reading the GPU code) as "GPiPNN: keep the
+  tensor cores fed" — regularize + asynchronous feed + WGMMA, sort-and-merge as the muted
+  closer — with the tile-shape table "what one step feeds — CPU vs GPU" (P92/P93: queries
+  x points x dims per instruction and per dimension step, feeding, selection) in BACKUP
+  (2026-09-04, for time); S23 split into mechanism (filmstrip) + results (plot). Main
+  line: title + 24 content slides + 3 dividers.
+- Balance (v3.2): 1:15 open · 2:10 background · 3:35 PiPNN mechanism · 3:00 CPU · 2:00 GPiPNN ·
+  1:30 direct k-NN · 1:30 close. Still no standalone PiPNN I results slide — its numbers
+  land as one spoken clause at the pivot (quality panels in backup).
+- AUDIENCE SAFETY (hard constraints — the room includes the authors of Jasper, CAGRA,
+  TurboQuant and RaBitQ):
+  * Lead every headline with the fairest number first — geomean vs the strongest QUANTIZED
+    baseline (P13), and like-for-like unquantized GPU numbers (8.1x/16.3x) before the
+    RSQ8 numbers (13.3x/27x). Jasper's 0.47x bar is visible in the teaser; name the
+    normalization out loud.
+  * Never assert that TQ4 "accepts bias" — that is an inference, not a paper statement.
+    The TQ4 delta (spoken, on the CPU overview slide; on-slide in backup) uses P51's exact
+    framing: replaces the residual (QJL) sketch with an extra codebook bit plus a
+    per-vector rescale.
+  * No "<=3.7% encoding cost" in visible slide text (not paper-derived, not banked); a
+    clearly-marked presenter-knowledge mention in notes only.
+  * GPU system name is GPiPNN everywhere (paper macro \ourgpumethod = GPiPNN; the paper's
+    table headers and the teaser legend typeset it "gPiPNN").
+  * P89 (TQ-vs-RaBitQ stretch test) is banked but NOT citable — that appendix subsection
+    sits inside a LaTeX \hide{} block and is not in the compiled paper. The "template is
+    the contribution" backup stands on P86 alone.
+- Every numerical claim in visible slide text must appear in docs/claim_bank.md; claim IDs
+  are cited in comments next to each use.
+- Animation rule (Tobias 2026-09-01 figure-first, extended 2026-09-02): the PiPNN II
+  clips are FIGURES with one small animated part, in the PiPNN I clips' visual language:
+  wordless geometry, one continuous motion per clip, ~4-6.5 s, freeze on a
+  content-bearing final frame; NO in-video titles or captions. Clips autoplay on slide
+  entry (video-restart.html restarts on slidechanged). The ONLY main-line PiPNN II clip
+  (v3.1) is bucket_even (regularize morph, on the GPU transition slide); backup keeps
+  vnni_topk (the CPU kernel slide), record_same (any order, same reservoir),
+  record_sortmerge (arrive→sort→sweep), vnni_score (instruction slide) and
+  gpu_regularize_skew (clock semantics). NO
+  fragment-synced or r-stacked videos on these slides — stacked fragment clips double-play
+  over each other when navigating back/forward; text-only fragments are safe on
+  fragment-clip slides (video-restart's fragmentshown handler only restarts videos INSIDE
+  the shown fragment — the picking slide's top-k mark and the backup CPU kernel slide
+  rely on this). Superseded clips stay on disk, unreferenced:
+  quantized_topk_{kernel_vecdb,score,fuse}, gpu_regularize{,_fix},
+  sortmerge_{prune,sort,merge,same}, vnni_fuse, record_{sort,merge}. (The KDD-delivered
+  fragment-clip slides in the PiPNN I act — picking, pruning problem — predate this rule
+  and stay as delivered.)
+- Traps honored: agent note below the first heading; closing ::: fences stay bare (a
+  trailing comment on a fence line swallows slides — use ::::/::: nesting and put comments
+  on their own lines); raw-HTML axis-hint divs are written as ONE line; every fragment on a
+  slide that mixes fragments carries an explicit fragment-index; lone raw-HTML block images
+  get auto-r-stretch (class `nostretch` opts out, `img.cutout` kills the white card — the
+  Pip corgi uses both); videos ride in the established hairline frames.
+- Theme/video behavior as in talk_kdd.qmd (UMD palette on warm paper; theme/pipnn-vecdb.scss
+  adds the 44px footer padding, .axis-hint and img.cutout; theme/video-restart.html restarts
+  clips on slide re-entry and on fragmentshown).
+-->
+<!-- ============ 0:00-1:15 OPEN (title + TL;DR + outline) ============ -->
+<div style="text-align: center; font-size: 0.88em;">
+<p><strong>CPU</strong> — <strong>4–8× faster than <em>quantized</em> Vamana</strong> (geomean <strong>5.9×</strong>); <strong>40.7×</strong> faster than <em>unquantized</em> Vamana <!-- P13 --></p>
+</div>
+<div style="text-align: center; font-size: 0.88em;">
+<p><strong>GPU</strong> — no quantization: <strong>8.1×</strong> over Jasper, <strong>16.3×</strong> over CAGRA; with RSQ8: <strong>13.3×</strong> / <strong>27×</strong> <!-- P19 --></p>
+</div>
+
+<img data-src="assets/figures/intro_speedup.png" class="quarto-figure quarto-figure-center r-stretch" style="width:58.0%"><div class="axis-hint" style="left: 9%; top: 46%; font-size: 1.25em;">
+<svg viewbox="0 0 44 110" width="50" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+<path d="M 22 100 C 17 72, 27 46, 22 14" fill="none" stroke="#e21833" stroke-width="3.5" stroke-linecap="round"></path><path d="M 12 27 L 22 12 L 32 29" fill="none" stroke="#e21833" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+<span class="axis-hint-label">Higher is<br>better</span>
+</div>
+<div class="fragment">
+<p>Same index quality — and <strong>billion-point indexes built in about 10 minutes</strong> on one CPU machine. <!-- P90 --></p>
+</div>
+<!-- Figure source: qpipnn_paper figures/intro_speedup.pdf (fig:teaser — CPU panel:
+     build-time speedup over Vamana-F32; GPU panel: over CAGRA). Numbers on this slide:
+     P13 (CPU geomeans), P19 (GPU geomeans), P90 (billion-point index builds: DEEP 564 s,
+     MS-Turing 567 s, Text2Image 730 s — the paper's intro says "under 10 minutes"; the
+     slide says "about 10" so Text2Image's 12 min is covered). The 10-NN-under-16-minutes
+     line (P22) now lives on the direct k-NN results slide and the Summary only
+     (v3.2, Tobias 2026-09-03: the TL;DR should speak to proximity-graph builds).
+     Order is deliberate (audience-safety note): the quantized-baseline comparison leads,
+     the unquantized number follows; on GPU the like-for-like unquantized pair leads the
+     RSQ8 pair. The figure NORMALIZES to Vamana-F32 and CAGRA — both authors' systems are
+     in the room, and Jasper's 0.47x bar on DBpedia-3072 is visible — so the normalization
+     is named out loud (notes).
+     .axis-hint (theme/pipnn-vecdb.scss): first occurrence of the speedup-bar plot type. -->
+<aside class="notes">
+<p>Timing: 0:00-1:15 with the title and outline slides — this one is about 35 seconds. Say the normalization before any number: build-time speedup, CPU panel normalized to full-precision Vamana, GPU panel to CAGRA — the 1.0 bars are baselines, not verdicts, and yes, Jasper is faster than CAGRA on DBpedia-3072. Then the fair number first: against a quantized Vamana, the strongest CPU baseline we know, 4 to 8 times faster, geomean 5.9; against unquantized Vamana, 40.7. On GPU, like for like with no quantization, 8.1 over Jasper and 16.3 over CAGRA; with RSQ8 on, 13.3 and 27. Click: quality is matched throughout, proven twice later, and the same machinery builds a billion-point graph index on one CPU machine in about ten minutes — DEEP and MS-Turing in nine and a half, Text2Image in twelve, against hours for unquantized Vamana (P90; the table comes at the CPU results). Machines if asked: c3-highmem-192 for CPU, one H100 80GB for GPU (P33; backup slide).</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="outline" class="slide level2">
+<h2>Outline</h2>
+<p><br></p>
+<div style="font-size: 1.08em;">
+<ul>
+<li><p><strong>Background</strong> — graph indexes, why build time matters, the search bottleneck. <!-- P1, P2 --></p></li>
+<li><p><strong>PiPNN</strong> (KDD 2026) — search-free construction: <strong>partition · compare locally · prune online</strong>. <!-- P10 --></p></li>
+<li><p><strong>This paper</strong> — Faster Implementation and k-NN graphs: <!-- P11; qualitative act summary --></p>
+<ul>
+<li>fast top-k kernels on <strong>CPU</strong>: quantize, then fuse <!-- P16, P51 --></li>
+<li><strong>GPiPNN</strong>: a GPU-native rebuild, licensed by history-independence <!-- P17, P8 --></li>
+<li><strong>k-NN graphs</strong> straight from the leaves <!-- P20-P22 --></li>
+</ul></li>
+</ul>
+</div>
+<!-- KDD-deck-style plain overview (the KDD deck's Overview slide is the model). The three
+     bullets are the three Part dividers; the third carries this paper's three contributions
+     as sub-bullets (v3.2, Tobias 2026-09-03). No numbers; claims are the acts' own. -->
+<aside class="notes">
+<p>About 25 seconds, one breath per act. Background: graph indexes win the query side, and their price is the build — nearly all of it spent searching the half-built index. PiPNN, the KDD paper, mechanism-first: partition into overlapping leaves, compare densely inside them, prune online. This paper: once search is gone, everything that remains is the same shape, a top-k problem — we make it fast on CPU and GPU, and when what you want is a k-NN graph, we skip the index and read the graph off the leaves. Hold that phrase, “everything is top-k”; the middle of the talk keeps coming back to it.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+<!-- ============ 1:15-3:25 BACKGROUND ============ -->
+</section>
+<section>
+<section id="part-i-background" class="title-slide slide level1 divider center">
+<h1><span class="overline">Part I</span> Background</h1>
+
+</section>
+<section id="nearest-neighbor-search" class="slide level2">
+<h2>Nearest neighbor search</h2>
+<svg viewbox="0 0 940 430" style="width: 82%; display: block; margin: 0.6em auto 0;" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Point cloud of emojis; a query point phases in, then edges to its three nearest neighbors">
+<!-- edges + k-NN label: second click (drawn first so they sit under the glyphs) -->
+<g class="fragment" data-fragment-index="2"> <line x1="455" y1="130" x2="420" y2="205" stroke="#e21833" stroke-width="3.5"></line> <line x1="455" y1="130" x2="330" y2="150" stroke="#e21833" stroke-width="3.5"></line> <line x1="455" y1="130" x2="300" y2="235" stroke="#e21833" stroke-width="3.5"></line> <text x="720" y="416" font-size="20" fill="#6f6a62" font-style="italic">k = 3 nearest neighbors</text> </g> <!-- animal cluster (the query lands here) --> <text x="330" y="162" font-size="38" text-anchor="middle">🐕</text> <text x="300" y="247" font-size="38" text-anchor="middle">🐈</text> <text x="420" y="217" font-size="38" text-anchor="middle">🦊</text> <text x="235" y="187" font-size="38" text-anchor="middle">🐇</text> <text x="350" y="327" font-size="38" text-anchor="middle">🐢</text> <!-- food cluster --> <text x="680" y="102" font-size="38" text-anchor="middle">🍕</text> <text x="790" y="132" font-size="38" text-anchor="middle">🍎</text> <text x="745" y="187" font-size="38" text-anchor="middle">🌮</text> <text x="665" y="227" font-size="38" text-anchor="middle">🍜</text> <text x="730" y="277" font-size="38" text-anchor="middle">🍩</text> <!-- music cluster --> <text x="520" y="362" font-size="38" text-anchor="middle">🎸</text> <text x="610" y="387" font-size="38" text-anchor="middle">🎹</text> <text x="695" y="352" font-size="38" text-anchor="middle">🥁</text> <!-- sports cluster --> <text x="110" y="267" font-size="38" text-anchor="middle">🏀</text> <text x="150" y="322" font-size="38" text-anchor="middle">⚽</text> <text x="215" y="362" font-size="38" text-anchor="middle">🎾</text> <text x="60" y="416" font-size="20" fill="#6f6a62" font-style="italic">embedding space</text> <!-- the query: first click --> <g class="fragment" data-fragment-index="1"> <circle cx="455" cy="130" r="34" fill="none" stroke="#e21833" stroke-width="3" stroke-dasharray="7,6"></circle> <text x="455" y="142" font-size="38" text-anchor="middle">🐺</text> <text x="505" y="108" font-size="21" fill="#e21833" font-style="italic">query</text> </g>
+</svg>
+<div class="fragment" data-fragment-index="3" style="text-align: center; margin-top: 0.15em;">
+<p><mark><strong>Must Approximate for Large Datasets</strong></mark></p>
+</div>
+<!-- v3.2-VecDB (Tobias 2026-09-03): "after the Part I divider, one slide on the nearest
+     neighbor search problem from the KDD paper — the audience is familiar, it is there to jog
+     memory." talk_kdd.qmd's "Nearest neighbor search" slide (v4-KDD, as delivered), SVG and
+     clicks verbatim: emoji point cloud, the query phases in on click 1, its 3-NN edges on
+     click 2, the gold "Must Approximate" mark on click 3. Pixel distances are truthful
+     (fox 83px, dog 127px, cat 187px; turtle next at 213px). P30 informal statement. -->
+<aside class="notes">
+<p>Timing: 1:15-3:25 for the background act — divider plus four slides. This one is about 25 seconds, a reminder for a room that knows it: embed everything into vectors, and similarity becomes proximity — animals near animals, food near food. Click one, a query arrives, the wolf. Click two, its k nearest: fox, dog, cat. Click three, the mark: exact k-NN at scale is hopeless in high dimensions, so every practical system approximates, and is judged on recall against throughput. Distance is L2, cosine or inner product. Next: the index family this talk is about.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="graph-indexes-fast-to-query-slow-to-build" class="slide level2">
+<h2>Graph indexes: fast to query, slow to build</h2>
+<div class="columns">
+<div class="column" style="width:55%;">
+<p>Points are vertices; edges connect <strong>near (and navigationally useful)</strong> points; a query <strong>walks the graph greedily</strong> toward its target.</p>
+<p><br></p>
+<p><strong>Pros</strong> — state-of-the-art <strong>QPS at high recall</strong> · any distance: L2, cosine, inner product <!-- P1, P66 --></p>
+<p><strong>Cons</strong> — <strong>slow to build</strong> · space overhead <!-- P66 --></p>
+</div><div class="column" style="width:45%;">
+<div class="side-loop">
+<video src="assets/videos/beam_loop_kdd.mp4" autoplay="" loop="" muted="" playsinline="" preload="auto">
+</video>
+</div>
+</div></div>
+<div class="fragment" style="text-align: center; margin-top: 1.0em;">
+<p><mark><strong>This talk: build time</strong></mark></p>
+</div>
+<!-- Borrowed from talk_kdd.qmd's "Graph indexes — walk toward the query" (v4-KDD, as
+     delivered): same text, side clip and mark; retitled as a claim, kicker dropped (no IVF
+     sibling slide here). -->
+<aside class="notes">
+<p>About 30 seconds, and for this room it is a reminder: a query walks edge to edge toward its target, so distance computations are spent only along the walk. That buys the state of the art on QPS at high recall, for any distance. The cons line is the talk: slow to build. Click the mark and hand off — why that matters, then where the build time goes.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="why-build-time-matters" class="slide level2">
+<h2>Why build time matters</h2>
+<ul>
+<li class="fragment"><strong>Indexes are rebuilt periodically</strong> <!-- PiPNN I 01_Introduction.tex:27; PiPNN II 01_Introduction.tex:22. --></li>
+<li class="fragment"><strong>New datasets mean parameter tuning</strong> <!-- PiPNN II 01_Introduction.tex:22. --></li>
+<li class="fragment"><strong>Scalability issues for billion scale.</strong> <!-- PiPNN I abstract framing, P6 scope. --></li>
+<li class="fragment"><strong>ANNS is a subroutine</strong> — clustering, k-NN graph construction, etc. <!-- PiPNN I 01_Introduction.tex:29. --></li>
+</ul>
+<!-- talk_kdd.qmd's "Why build time matters" (v4-KDD, as delivered), verbatim — the four
+     bullets Tobias settled on 2026-08-11; the post-dash clauses are spoken in the notes. -->
+<aside class="notes">
+<p>About 35 seconds, examples from the papers’ introductions. Rebuilds happen constantly — data drifts, embeddings get retrained. Every parameter-tuning trial on a new dataset is a full build. At a billion points the build is the thing that does not fit in the day. And ANNS sits under accelerated k-means, hierarchical clustering, approximate k-NN graph construction, spanners and MSTs, so a faster build compounds — the k-NN-graph case comes back at the end of the talk. Transition: so how are the fastest indexes built, and where does the time go?</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="the-search-bottleneck" class="slide level2">
+<h2>The search bottleneck</h2>
+<div class="fragment" data-fragment-index="1">
+<ul>
+<li><strong>Vamana · HNSW · NSG</strong> all <strong>search the partial index</strong> for candidates, then <strong>prune</strong>. <!-- P1, P2; prune rule per P29 --></li>
+</ul>
+</div>
+<div class="fragment" data-fragment-index="2">
+<ul>
+<li>Build time is <strong>dominated by search</strong>: <!-- P1, P2 --></li>
+</ul>
+</div>
+<!-- P78: every number in the table below (seconds and derived search shares). -->
+<div class="fragment" data-fragment-index="2" style="font-size: 0.62em; margin-top: 0.3em;">
+<table class="caption-top">
+<thead>
+<tr class="header">
+<th style="text-align: left;">Vamana build</th>
+<th style="text-align: right;">Search (s)</th>
+<th style="text-align: right;">Prune (s)</th>
+<th style="text-align: right;">Search share</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;">OpenAI-ArXiv</td>
+<td style="text-align: right;">342.3</td>
+<td style="text-align: right;">13.4</td>
+<td style="text-align: right;">96%</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">MS-SPACEV</td>
+<td style="text-align: right;">474.1</td>
+<td style="text-align: right;">282.1</td>
+<td style="text-align: right;">63%</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Wikipedia-Cohere</td>
+<td style="text-align: right;">4663.1</td>
+<td style="text-align: right;">385.6</td>
+<td style="text-align: right;">92%</td>
+</tr>
+</tbody>
+</table>
+<div style="text-align: center; font-size: 1.15em; margin-top: 0.4em;">
+<p><strong>On average, ≈ 84% of build time is spent searching.</strong> <!-- P78 --></p>
+</div>
+</div>
+<div class="fragment" data-fragment-index="3">
+<ul>
+<li>Fails to leverage that the problem is <strong>offline</strong>. <!-- P3 context --></li>
+</ul>
+</div>
+<div class="fragment" data-fragment-index="4" style="text-align: center; margin-top: 0.5em;">
+<p><mark><strong>Goal: generate good candidates without searching the index</strong></mark> <!-- P1, P2, P3 --></p>
+</div>
+<!-- talk_kdd.qmd's "The search bottleneck" with that deck's "Modern Way" recipe line folded
+     into bullet 1 (the modern_insert/modern_prune clips are in backup). Click order: recipe
+     → dominated-by-search + the P78 table → offline → goal mark.
+     P78: Tobias-provided Vamana phase instrumentation (2026-08-11); build ~ search + prune;
+     percentages derived, mean 83.8%. -->
+<aside class="notes">
+<p>About 40 seconds. Click one, the recipe, said fast because everyone here has implemented it: n points, n beam searches over a graph that is still being built — pointer chasing, random access, cache misses. Click two, the receipts (P78): Vamana’s own phase timing — search share 96, 63 and 92 percent, about 84 on average. Click three: search was never the point; its one job is producing candidates for the prune, and construction is offline, all n points known up front, so answering one point at a time wastes the setting. Click four, the goal, which is the whole next act: generate good candidates without searching the index. Prior attacks that optimize around the search loop — MIRAGE, FastKCNA, SymphonyQG — polish the loop, never remove it (backup).</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+<!-- ============ 3:25-7:00 PIPNN: THE MECHANISM ============ -->
+</section></section>
+<section>
+<section id="part-ii-pipnn-search-free-construction" class="title-slide slide level1 divider center">
+<h1><span class="overline">Part II</span> PiPNN: search-free construction</h1>
+<div class="divider-detail">
+<p><strong>PiPNN: Ultra-Scalable Graph-Based Nearest Neighbor Indexing</strong> — KDD 2026 <!-- P37 --></p>
+</div>
+<p><img class="cutout fragment fade-up" src="assets/figures/pip_corgi.png" style="position: absolute; right: 5%; bottom: -265px; width: 24%;" alt="Pip, the corgi PiPNN is named after"></p>
+<!-- As at KDD (v4-KDD divider): Pip, the corgi PiPNN is named after, fades up on one click.
+     img.cutout suppresses the white figure card; nostretch keeps the raw-HTML image out of
+     Quarto's auto-r-stretch. -->
+<aside class="notes">
+<p>One click before speaking the act: Pip fades in — the corgi PiPNN is named after. Let the room have the beat. Then the strategy in one breath: construction is offline, so stop answering one point at a time — partition the data, compare locally, prune online.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="pipnn-end-to-end" class="slide level2">
+<h2>PiPNN, end to end</h2>
+<div class="columns">
+<div class="column" style="width:44%;">
+<div class="pseudocode">
+<p><span class="pc-line"><span class="fn">PiPNN</span>(X, params):</span> <span class="pc-line">&nbsp;&nbsp;G ← (X, ∅)</span> <span class="pc-line fragment hl" data-fragment-index="1">&nbsp;&nbsp;B ← <span class="fn">Partition</span>(X)&nbsp;&nbsp;<span class="cm">▸ overlapping leaves</span></span> <span class="pc-line">&nbsp;&nbsp;<span class="kw">for</span> leaf b ∈ B <span class="kw">in parallel</span>:</span> <span class="pc-line fragment hl" data-fragment-index="2">&nbsp;&nbsp;&nbsp;&nbsp;E<sub>b</sub> ← <span class="fn">Pick</span>(b)&nbsp;&nbsp;<span class="cm">▸ dense in-leaf k-NN candidates</span></span> <span class="pc-line fragment hl" data-fragment-index="3">&nbsp;&nbsp;&nbsp;&nbsp;G.<span class="fn">PruneAndAddEdges</span>(E<sub>b</sub>)&nbsp;&nbsp;<span class="cm">▸ per-point online prune</span></span> <span class="pc-line">&nbsp;&nbsp;<span class="kw">if</span> params.final_prune:</span> <span class="pc-line fragment hl" data-fragment-index="4">&nbsp;&nbsp;&nbsp;&nbsp;<span class="kw">for</span> x ∈ X <span class="kw">in parallel</span>:&nbsp;<span class="fn">RobustPrune</span>(x)</span> <span class="pc-line">&nbsp;&nbsp;<span class="kw">return</span> G</span></p>
+</div>
+</div><div class="column" style="width:56%;">
+<div class="r-stack">
+<p><img data-src="assets/figures/steps/points.png" style="width:100.0%"></p>
+<div class="fragment fade-in-then-out" data-fragment-index="1">
+<p><img data-src="assets/figures/steps/partition.png" style="width:100.0%"></p>
+</div>
+<div class="fragment fade-in-then-out" data-fragment-index="2">
+<p><img data-src="assets/figures/steps/pick.png" style="width:100.0%"></p>
+</div>
+<div class="fragment fade-in-then-out" data-fragment-index="3">
+<p><img data-src="assets/figures/steps/prune.png" style="width:100.0%"></p>
+</div>
+<div class="fragment" data-fragment-index="4">
+<p><img data-src="assets/figures/steps/finalprune.png" style="width:100.0%"></p>
+</div>
+</div>
+</div></div>
+<!-- Pipeline: P10 (partition -> pick -> online prune -> optional RobustPrune).
+     Stills: animations/pipnn_steps.py Still* scenes (manim -s) — one persistent seeded
+     scene with overlapping translucent hulls; the non-fragment points.png base shows the
+     raw input (G <- (X, empty)) before any click. Each advance highlights the matching
+     pseudocode line (pc-line fragments share the fragment index). As in talk_kdd.qmd;
+     Pip moved back to the Part II divider in v3-VecDB. -->
+<aside class="notes">
+<p>Timing: 3:25-7:00 for the PiPNN act — divider plus four slides, mechanism only, no results slide. This one is about 45 seconds. The slide opens on the bare point set. Click one, Partition carves overlapping leaves — point at a lens where two hulls share points; ringed dots are leaders. Click two, Pick draws each leaf’s 2-NN edges. Click three, the online prune sparsifies as thousands of leaf streams merge — do not explain it yet, just name it: an online prune we call HashPrune, three slides away, with the theorem that licenses the GPU version. Click four, an optional final RobustPrune pass: about 7-10% of build time for about 10% more QPS, so it is on by default (P69). Retellable version: partition, compare locally, stream candidates into an online prune.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="partitioning-overlapping-leaves-by-ball-carving" class="slide level2">
+<h2>Partitioning: overlapping leaves by ball carving</h2>
+<div class="columns">
+<div class="column" style="width:56%;">
+<div class="fragment" data-fragment-index="1">
+<ul>
+<li><strong>Ball carving</strong> — sample a random subset of points as partition <em>leaders</em> (the ringed dots); assign every point to its closest leader; any cell larger than <span class="math inline">C_{\max}</span> (typically 1024) recurses. <!-- P36, P43 --></li>
+</ul>
+</div>
+<div class="fragment" data-fragment-index="2">
+<ul>
+<li><strong>Overlap via fanout</strong> — assign each point to its top-<span class="math inline">f</span> closest leaders, so close neighbors are not split across a cell boundary. <!-- P43 --></li>
+</ul>
+</div>
+<div class="fragment" data-fragment-index="3">
+<ul>
+<li><strong>Multi-level fanout</strong> — make <span class="math inline">f</span> a function of depth (e.g.&nbsp;10 at the top, 3 below). <!-- P43; full ablation in backup (P28). --></li>
+</ul>
+</div>
+<div class="fragment" data-fragment-index="4" style="margin-top: 0.7em; font-size: 0.9em;">
+<p><mark><strong>Leader assignment is a top-k problem: score every point against the leaders, keep its top-<em>f</em>.</strong></mark> <!-- P43, P54; the top-k thesis (P11) --></p>
+</div>
+</div><div class="column" style="width:44%;">
+<div class="r-stack">
+<p><img data-src="assets/figures/steps/voronoi_kdd.png" style="width:100.0%"></p>
+<div class="fragment" data-fragment-index="2">
+<p><img data-src="assets/figures/steps/partition.png" style="width:100.0%"></p>
+</div>
+</div>
+</div></div>
+<!-- talk_kdd.qmd's partitioning slide (v4-KDD). Two-still r-stack: base voronoi_kdd.png is
+     the f=1 DISJOINT tiling with ringed leaders; the fanout click overlays partition.png —
+     the same seeded scene with f=2 OVERLAPPING hulls. v3.2-VecDB (Tobias 2026-09-03:
+     "emphasize that each leader assignment can be thought of as a top-k problem"): the
+     click-4 mark is now the top-k statement; the KDD deck's P28 fanout-vs-replication
+     payoff is spoken (notes) with its ablation in backup. -->
+<aside class="notes">
+<p>About 45 seconds, walked in the figure’s terms. Click one, the disjoint tiling: ringed dots are sampled leaders, cells are closest-leader assignment, recursion keeps cells at cache size. Boundaries split neighbor pairs, so the partition must overlap. Click two, the same scene with fanout on: overlapping hulls. Replication — rerun the whole partitioning with fresh leaders — is the blunt version; fanout is the cheap one: every point joins its top-f leaders in the pass that already scored them, 1.35 to 2.5 times faster than replication at the same quality (P28; ablation in backup). Click three: f wide at the top, narrow below. Click four, the mark, read verbatim: leader assignment is a top-k problem — score every point against the leaders, keep its top-f.&nbsp;One dense block, a top-f on every row. Hold the shape: the leaves have it too, next slide, and the second half of the talk is about making it fast.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="picking-from-leaves" class="slide level2">
+<h2>Picking from leaves</h2>
+<div class="columns">
+<div class="column" style="width:52%;">
+<div class="fragment" data-fragment-index="1">
+<ul>
+<li>Inside a leaf, <strong>compare everything to everything</strong>. <!-- P3, P36 --></li>
+</ul>
+</div>
+<div class="fragment" data-fragment-index="2">
+<ul>
+<li>Each point keeps its <strong>two nearest co-members</strong> — directed 2-NN edges. <!-- P46, P55, P67 --></li>
+</ul>
+</div>
+<div class="fragment" data-fragment-index="3">
+<ul>
+<li><strong>Symmetrize</strong> — add <strong>back-edges</strong>. <!-- P67 --></li>
+</ul>
+</div>
+<div class="fragment" data-fragment-index="4">
+<ul>
+<li>Two per leaf is enough. <!-- P55, P67 --></li>
+</ul>
+</div>
+<div class="fragment" data-fragment-index="5" style="margin-top: 0.7em; font-size: 0.9em;">
+<p><mark><strong>A top-k problem: score every pair, keep each point’s k nearest.</strong></mark> <!-- P3, P11 --></p>
+</div>
+</div><div class="column" style="width:48%;">
+<div class="r-stack">
+<div class="fragment fade-in-then-out" data-fragment-index="1">
+<video class="seamless" src="assets/videos/pick_alltoall.mp4" muted="" playsinline="" preload="auto" style="width: 100%;">
+</video>
+</div>
+<div class="fragment fade-in-then-out" data-fragment-index="2">
+<video class="seamless" src="assets/videos/pick_directed.mp4" muted="" playsinline="" preload="auto" style="width: 100%;">
+</video>
+</div>
+<div class="fragment" data-fragment-index="3">
+<video class="seamless" src="assets/videos/pick_bidirected.mp4" muted="" playsinline="" preload="auto" style="width: 100%;">
+</video>
+</div>
+</div>
+</div></div>
+<!-- Three fragment-synced NON-looping clips over one leaf (animations/leaf_pick.py — each
+     freezes on its last frame, the next reconstructs it exactly): all-pairs sweep, directed
+     2-NN arrows, symmetrization. Bullets 1-4 are talk_kdd.qmd's (as delivered). Fragment 5
+     is TEXT-ONLY (safe on a fragment-clip slide: video-restart's fragmentshown handler only
+     restarts videos INSIDE the shown fragment) — the top-k mark the outline planted, repaid
+     at the pivot, the CPU/GPU overview slides, the direct-k-NN slide and the summary. -->
+<aside class="notes">
+<p>About 45 seconds; the setup for the whole second half. Click one, all-to-all: the full distance matrix of one cache-sized leaf — the exact opposite memory behavior of beam search’s scattered gathers. Click two, each point keeps its two nearest co-members. Click three, symmetrize — the back-edges arrive, the graph stays directed. Click four, over the frozen graph: two per leaf suffices because a point sits in many leaves and collects candidates from all of them. Click five, the marked line, read verbatim: a top-k problem — score every pair, keep each point’s k nearest. That shape is what the second half of the talk accelerates. Handoff: every leaf streams its small graph out as candidate edges, thousands of leaves in parallel; pruning that firehose — briefly, it is the KDD paper’s — is next.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="hashprune-an-online-order-independent-prune" class="slide level2">
+<h2>HashPrune: an online, order-independent prune</h2>
+<div class="columns">
+<div class="column" style="font-size: 0.92em;">
+<div class="fragment" data-fragment-index="1">
+<ul>
+<li>The union of the leaf graphs is <strong>dense and redundant</strong> — and the classical prune (<strong>RobustPrune</strong>) is <strong>offline</strong>: complete candidate set, globally sorted. <!-- P29; the union-without-pruning trap is HCNNG's (P41, P50) --></li>
+</ul>
+</div>
+<div class="fragment" data-fragment-index="2">
+<ul>
+<li><strong>HashPrune</strong> — per source point <span class="math inline">p</span>: hash each candidate’s <strong>residual direction</strong> <span class="math inline">c - p</span>; on a bucket <strong>collision, keep the nearer</strong>; when full, <strong>evict the farthest</strong>. Online, in bounded memory. <!-- P7, P9, P31, P44 --></li>
+</ul>
+</div>
+<div class="fragment" data-fragment-index="3">
+<ul>
+<li><strong>Theorem.</strong> The final adjacency list is <strong>independent of insertion order</strong>. With fixed seeds, PiPNN is <strong>deterministic</strong>. <!-- P8, P77 --></li>
+</ul>
+</div>
+</div><div class="column" style="width:46%;">
+<div class="side-loop">
+<video src="assets/videos/hashprune_insert_kdd.mp4" autoplay="" loop="" muted="" playsinline="" preload="auto">
+</video>
+</div>
+</div></div>
+<!-- v3.2-VecDB (Tobias 2026-09-03: "S12-S14 — do we need these? We don't innovate on
+     HashPrune here, so it's odd to spill so much ink on it"): the KDD deck's three slides
+     (the pruning problem / HashPrune / history-independence) folded into ONE — problem in a
+     line, the rule sentence verbatim, the theorem in a line, and the forward hook the GPU
+     act cashes (P61). Visual: animations/hashprune_insert.py HashPruneInsertLoopEven ->
+     hashprune_insert_kdd.mp4 (side loop; beat 1 a nearer candidate collides and prunes the
+     farther occupant, beat 2 a farther candidate is dropped). Text-only fragments over a
+     looping side clip are safe. The three original slides live in backup ("the pruning
+     problem" with its union clips; "HashPrune is history-independent" with the corollary;
+     the proof sketch and "any order, same reservoir" were already there). -->
+<aside class="notes">
+<p>About 60 seconds — the act’s turn and its hinge on one slide; this room knows RobustPrune, so spend the time on the theorem. Click one, the problem: every point sits in many leaves, so the union of the leaf graphs is a dense tangle, much of it redundant — near-parallel edges, back-edges piling into hubs. We must prune, and RobustPrune, the rule every search-built method uses, is offline — complete candidate set, globally sorted, before any decision — while our candidates arrive as parallel streams from thousands of leaves. Click two, HashPrune, walked over the loop on the right: residual directions from p; each candidate hashes to one of the LSH cones, and two candidates in the same cone are near-parallel — exactly the redundancy. A nearer arrival evicts the farther occupant; a farther arrival bounces off a full reservoir. Online, bounded memory. Parameters if asked: m = 12 hyperplanes, only 6 bits ever hurt, 8 bytes per slot, maintenance at or under about five percent of build time (P44, P32). Click three, the theorem, and do not rush it: for a fixed hash function and candidate set the final adjacency list does not depend on insertion order — so with fixed seeds a 192-core racy build is bit-identical every run (P8, P77). Click four, the hook: if the reservoir does not depend on arrival order, any procedure that produces the same candidate set is legal — including sorting the whole batch on a GPU and merging it in one sweep. That is the GPU act. Proof sketch, the full pruning-problem clips and the shuffled-order clip are in backup.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+<!-- ============ 7:00-10:00 TURBOCHARGING: CPU ============ -->
+</section></section>
+<section>
+<section id="part-iii-turbocharging-pipnn" class="title-slide slide level1 divider center">
+<h1><span class="overline">Part III</span> Turbocharging PiPNN</h1>
+<div class="divider-detail">
+<p><strong>This paper</strong> — fast top-k on CPU and GPU, and k-NN graphs straight from the leaves</p>
+</div>
+<aside class="notes">
+<p>Five seconds. One spoken clause closes the PiPNN I story, since there is no results slide for it: at KDD we reported average build speedups of 6.32 times over Vamana and 10.4 times over HNSW at matched index quality, up to 11.6 and 12.9 (P4, P5); quality panels are in backup. Now: where does the time go once search is gone?</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="top-k-is-the-majority-of-the-work" class="slide level2">
+<h2>Top-k is the majority of the work</h2>
+<div class="columns">
+<div class="column" style="width:55%;">
+<p><img data-src="assets/figures/build_time_breakdown.png" style="width:100.0%"></p>
+</div><div class="column" style="width:45%;">
+<div class="fragment" data-fragment-index="1">
+<ul>
+<li><strong>Partitioning</strong>: each point finds its <strong>top-<em>f</em></strong> leaders. <!-- P54 --></li>
+</ul>
+</div>
+<div class="fragment" data-fragment-index="2">
+<ul>
+<li><strong>Leaf building</strong>: each point finds its <strong>top-2</strong> inside the leaf. <!-- P55 --></li>
+</ul>
+</div>
+<div class="fragment" data-fragment-index="3" style="margin-top: 0.7em;">
+<p><mark><strong>Same kernel twice: score a dense block, keep the top k.</strong></mark> <!-- P11 --></p>
+</div>
+</div></div>
+<!-- Figure source: pipnn_kdd_camera_ready figures/build_time_breakdown.pdf (PiPNN phase
+     breakdown: Partition / Build Leaves / Final Prune shares). Claim: P11 (with search
+     removed, the remaining bottleneck is batched distance comparison + top-k aggregation).
+     On-slide text is deliberately digit-free — the per-dataset percentages are printed on
+     the figure itself; the "three of four datasets" read stays in the notes. -->
+<aside class="notes">
+<p>Timing: 7:00-10:00 for the CPU act — divider plus five slides. This pivot is about 45 seconds and cashes the mark from the picking slide. Read the breakdown: partitioning is the largest share on three of the four datasets — 57, 56 and 67 percent — and leaf building takes the rest, except on OpenAI where the 1536-dimensional leaves flip it to 54. Click one: partitioning is not bookkeeping, it is every point scored against a small leader set, keeping its top-f.&nbsp;Click two: the leaves are a self-join — all-pairs scores, top-2 per point. Click three, the pivot: with search gone, everything left is one kernel shape, a dense score block with a top-k on every row — and the original PiPNN did that with fp32 GEMM, a materialized distance matrix and a post-hoc sort.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="the-kernel-implementation-dominates" class="slide level2">
+<h2>The kernel implementation dominates</h2>
+
+<img data-src="assets/figures/CPU/leaftop2_ablation.png" class="quarto-figure quarto-figure-center r-stretch" style="width:58.0%"><div style="text-align: center;">
+<p><mark><strong>Implementation of top-k kernels has highest impact on running time</strong></mark> <!-- Tobias's v11 wording (P73); the evidence here is P15 --></p>
+</div>
+<div class="fragment" style="text-align: center; font-size: 0.9em;">
+<p>Same leaf, same core: <strong>12.90 ms → 1.04 ms</strong> — <strong>12.4×</strong> from the kernel alone. <!-- P15 --></p>
+</div>
+<!-- v3.2-VecDB (Tobias 2026-09-03: "S17 — is this the right plot? It's from the first
+     paper... for PiPNN II we have that supplemental fig showing all the optimizations"):
+     figure swapped to THIS paper's leaf-top-2 kernel ablation (qpipnn_paper
+     results/CPU/leaftop2_ablations/leaftop2_ablation.pdf, fig:leaftop2-ablation,
+     05_Experiments.tex:217-249): horizontal stacked bars, eight CUMULATIVE stages top to
+     bottom from PiPNN I's kernel (Eigen FP32 + VQSort) to this paper's (+ SIMD Scatter);
+     x = time in ms, lower is better (printed on the axis, so no .axis-hint); segments =
+     Prepare / GEMM / Filtering / Other. Banked: the endpoints only (P15: 12.90 -> 1.04 ms,
+     12.4x). The per-bar GMAC/s labels, per-stage factors and filtering shares are
+     PROVISIONAL (claim bank provisional table) — spoken at most, never slide text. One
+     benchmark, one unnamed 1M x 768-d dataset, 800-point leaf, single core — do not imply
+     generality. The first paper's Eigen/Highway ablation (P73) moved to backup. -->
+<aside class="notes">
+<p>About 35 seconds. This paper’s own ablation: one leaf of 800 points on a single core, the bars cumulative top to bottom. The top bar is PiPNN I’s leaf kernel — an fp32 Eigen GEMM plus a vectorized partial sort, already a tuned kernel. The first drop is quantization: the same scores on integer dot-product instructions. Everything after is layout and fusion — unrolling, scoring only the lower triangle, and vectorizing the top-2 update, the largest single jump. Click: 12.9 milliseconds to 1.04, 12.4 times — same algorithm, same leaf, only the kernel changed (P15). Stage numbers beyond the endpoints are provisional, so do not quote them. The question this paper asks is therefore how to compute a batched top-k, and the answer has two moves — next slide.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="cpu-quantize-then-fuse-the-top-k" class="slide level2">
+<h2>CPU: quantize, then fuse the top-k</h2>
+<svg viewbox="0 0 720 330" style="width: 56%; display: block; margin: 0.2em auto 0;" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="PiPNN I scores fp32 vectors into a stored score matrix and sorts each row for its top-2; this paper scores int8 codes and selects the top-2 in one fused pass, never storing the matrix">
+<defs><marker id="cpuarr" markerwidth="9" markerheight="9" refx="7" refy="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="#6f6a62"></path></marker><marker id="cpuarr-red" markerwidth="9" markerheight="9" refx="7" refy="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="#e21833"></path></marker></defs> <text x="0" y="72" font-size="20" fill="#6f6a62" font-style="italic">PiPNN I</text> <text x="0" y="96" font-size="15" fill="#6f6a62">score · store · sort</text> <rect x="171.5" y="31.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.45"></rect><rect x="187.5" y="31.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.45"></rect><rect x="203.5" y="31.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.45"></rect><rect x="219.5" y="31.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.45"></rect><rect x="235.5" y="31.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.45"></rect><rect x="251.5" y="31.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.45"></rect><rect x="267.5" y="31.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.45"></rect><rect x="283.5" y="31.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.45"></rect><rect x="171.5" y="47.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.45"></rect><rect x="187.5" y="47.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.45"></rect><rect x="203.5" y="47.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.45"></rect><rect x="219.5" y="47.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.45"></rect><rect x="235.5" y="47.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.45"></rect><rect x="251.5" y="47.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.45"></rect><rect x="267.5" y="47.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.45"></rect><rect x="283.5" y="47.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.45"></rect><rect x="171.5" y="63.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.45"></rect><rect x="187.5" y="63.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.45"></rect><rect x="203.5" y="63.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.45"></rect><rect x="219.5" y="63.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.45"></rect><rect x="235.5" y="63.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.45"></rect><rect x="251.5" y="63.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.45"></rect><rect x="267.5" y="63.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.45"></rect><rect x="283.5" y="63.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.45"></rect><rect x="171.5" y="79.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.45"></rect><rect x="187.5" y="79.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.45"></rect><rect x="203.5" y="79.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.45"></rect><rect x="219.5" y="79.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.45"></rect><rect x="235.5" y="79.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.45"></rect><rect x="251.5" y="79.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.45"></rect><rect x="267.5" y="79.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.45"></rect><rect x="283.5" y="79.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.45"></rect><rect x="171.5" y="95.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.45"></rect><rect x="187.5" y="95.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.45"></rect><rect x="203.5" y="95.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.45"></rect><rect x="219.5" y="95.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.45"></rect><rect x="235.5" y="95.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.45"></rect><rect x="251.5" y="95.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.45"></rect><rect x="267.5" y="95.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.45"></rect><rect x="283.5" y="95.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.45"></rect><rect x="171.5" y="111.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.45"></rect><rect x="187.5" y="111.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.45"></rect><rect x="203.5" y="111.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.45"></rect><rect x="219.5" y="111.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.45"></rect><rect x="235.5" y="111.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.45"></rect><rect x="251.5" y="111.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.45"></rect><rect x="267.5" y="111.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.45"></rect><rect x="283.5" y="111.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.45"></rect> <text x="233" y="146" font-size="15" fill="#6f6a62" text-anchor="middle">fp32 vectors</text> <path d="M 316 77 L 392 77" stroke="#6f6a62" stroke-width="2" marker-end="url(#cpuarr)"></path> <text x="354" y="66" font-size="15" fill="#6f6a62" font-style="italic" text-anchor="middle">score</text> <rect x="411.5" y="31.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.6"></rect><rect x="427.5" y="31.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.6"></rect><rect x="443.5" y="31.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.6"></rect><rect x="459.5" y="31.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.6"></rect><rect x="475.5" y="31.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.6"></rect><rect x="491.5" y="31.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.6"></rect><rect x="411.5" y="47.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.6"></rect><rect x="427.5" y="47.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.6"></rect><rect x="443.5" y="47.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.6"></rect><rect x="459.5" y="47.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.6"></rect><rect x="475.5" y="47.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.6"></rect><rect x="491.5" y="47.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.6"></rect><rect x="411.5" y="63.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.6"></rect><rect x="427.5" y="63.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.6"></rect><rect x="443.5" y="63.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.6"></rect><rect x="459.5" y="63.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.6"></rect><rect x="475.5" y="63.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.6"></rect><rect x="491.5" y="63.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.6"></rect><rect x="411.5" y="79.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.6"></rect><rect x="427.5" y="79.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.6"></rect><rect x="443.5" y="79.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.6"></rect><rect x="459.5" y="79.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.6"></rect><rect x="475.5" y="79.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.6"></rect><rect x="491.5" y="79.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.6"></rect><rect x="411.5" y="95.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.6"></rect><rect x="427.5" y="95.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.6"></rect><rect x="443.5" y="95.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.6"></rect><rect x="459.5" y="95.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.6"></rect><rect x="475.5" y="95.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.6"></rect><rect x="491.5" y="95.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.6"></rect><rect x="411.5" y="111.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.6"></rect><rect x="427.5" y="111.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.6"></rect><rect x="443.5" y="111.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.6"></rect><rect x="459.5" y="111.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.6"></rect><rect x="475.5" y="111.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.6"></rect><rect x="491.5" y="111.5" width="13" height="13" fill="#6f6a62" fill-opacity="0.6"></rect> <text x="457" y="146" font-size="15" fill="#6f6a62" text-anchor="middle">score matrix, stored</text> <path d="M 524 77 L 600 77" stroke="#6f6a62" stroke-width="2" marker-end="url(#cpuarr)"></path> <text x="562" y="66" font-size="15" fill="#6f6a62" font-style="italic" text-anchor="middle">sort rows</text> <rect x="619.5" y="31.5" width="13" height="13" fill="#15803d" fill-opacity="0.75"></rect><rect x="635.5" y="31.5" width="13" height="13" fill="#15803d" fill-opacity="0.75"></rect><rect x="619.5" y="47.5" width="13" height="13" fill="#15803d" fill-opacity="0.75"></rect><rect x="635.5" y="47.5" width="13" height="13" fill="#15803d" fill-opacity="0.75"></rect><rect x="619.5" y="63.5" width="13" height="13" fill="#15803d" fill-opacity="0.75"></rect><rect x="635.5" y="63.5" width="13" height="13" fill="#15803d" fill-opacity="0.75"></rect><rect x="619.5" y="79.5" width="13" height="13" fill="#15803d" fill-opacity="0.75"></rect><rect x="635.5" y="79.5" width="13" height="13" fill="#15803d" fill-opacity="0.75"></rect><rect x="619.5" y="95.5" width="13" height="13" fill="#15803d" fill-opacity="0.75"></rect><rect x="635.5" y="95.5" width="13" height="13" fill="#15803d" fill-opacity="0.75"></rect><rect x="619.5" y="111.5" width="13" height="13" fill="#15803d" fill-opacity="0.75"></rect><rect x="635.5" y="111.5" width="13" height="13" fill="#15803d" fill-opacity="0.75"></rect> <text x="634" y="146" font-size="15" fill="#6f6a62" text-anchor="middle">top-2</text> <path d="M 233 158 L 233 190" stroke="#e21833" stroke-width="2.5" marker-end="url(#cpuarr-red)"></path> <text x="246" y="180" font-size="16" fill="#e21833" font-style="italic">quantize</text> <text x="0" y="242" font-size="20" fill="#1c1814" font-style="italic">This paper</text> <text x="0" y="266" font-size="15" fill="#1c1814">quantize · fuse</text> <rect x="174.5" y="204.5" width="7" height="7" fill="#2563eb" fill-opacity="0.85"></rect><rect x="190.5" y="204.5" width="7" height="7" fill="#2563eb" fill-opacity="0.85"></rect><rect x="206.5" y="204.5" width="7" height="7" fill="#2563eb" fill-opacity="0.85"></rect><rect x="222.5" y="204.5" width="7" height="7" fill="#2563eb" fill-opacity="0.85"></rect><rect x="238.5" y="204.5" width="7" height="7" fill="#2563eb" fill-opacity="0.85"></rect><rect x="254.5" y="204.5" width="7" height="7" fill="#2563eb" fill-opacity="0.85"></rect><rect x="270.5" y="204.5" width="7" height="7" fill="#2563eb" fill-opacity="0.85"></rect><rect x="286.5" y="204.5" width="7" height="7" fill="#2563eb" fill-opacity="0.85"></rect><rect x="174.5" y="220.5" width="7" height="7" fill="#2563eb" fill-opacity="0.85"></rect><rect x="190.5" y="220.5" width="7" height="7" fill="#2563eb" fill-opacity="0.85"></rect><rect x="206.5" y="220.5" width="7" height="7" fill="#2563eb" fill-opacity="0.85"></rect><rect x="222.5" y="220.5" width="7" height="7" fill="#2563eb" fill-opacity="0.85"></rect><rect x="238.5" y="220.5" width="7" height="7" fill="#2563eb" fill-opacity="0.85"></rect><rect x="254.5" y="220.5" width="7" height="7" fill="#2563eb" fill-opacity="0.85"></rect><rect x="270.5" y="220.5" width="7" height="7" fill="#2563eb" fill-opacity="0.85"></rect><rect x="286.5" y="220.5" width="7" height="7" fill="#2563eb" fill-opacity="0.85"></rect><rect x="174.5" y="236.5" width="7" height="7" fill="#2563eb" fill-opacity="0.85"></rect><rect x="190.5" y="236.5" width="7" height="7" fill="#2563eb" fill-opacity="0.85"></rect><rect x="206.5" y="236.5" width="7" height="7" fill="#2563eb" fill-opacity="0.85"></rect><rect x="222.5" y="236.5" width="7" height="7" fill="#2563eb" fill-opacity="0.85"></rect><rect x="238.5" y="236.5" width="7" height="7" fill="#2563eb" fill-opacity="0.85"></rect><rect x="254.5" y="236.5" width="7" height="7" fill="#2563eb" fill-opacity="0.85"></rect><rect x="270.5" y="236.5" width="7" height="7" fill="#2563eb" fill-opacity="0.85"></rect><rect x="286.5" y="236.5" width="7" height="7" fill="#2563eb" fill-opacity="0.85"></rect><rect x="174.5" y="252.5" width="7" height="7" fill="#2563eb" fill-opacity="0.85"></rect><rect x="190.5" y="252.5" width="7" height="7" fill="#2563eb" fill-opacity="0.85"></rect><rect x="206.5" y="252.5" width="7" height="7" fill="#2563eb" fill-opacity="0.85"></rect><rect x="222.5" y="252.5" width="7" height="7" fill="#2563eb" fill-opacity="0.85"></rect><rect x="238.5" y="252.5" width="7" height="7" fill="#2563eb" fill-opacity="0.85"></rect><rect x="254.5" y="252.5" width="7" height="7" fill="#2563eb" fill-opacity="0.85"></rect><rect x="270.5" y="252.5" width="7" height="7" fill="#2563eb" fill-opacity="0.85"></rect><rect x="286.5" y="252.5" width="7" height="7" fill="#2563eb" fill-opacity="0.85"></rect><rect x="174.5" y="268.5" width="7" height="7" fill="#2563eb" fill-opacity="0.85"></rect><rect x="190.5" y="268.5" width="7" height="7" fill="#2563eb" fill-opacity="0.85"></rect><rect x="206.5" y="268.5" width="7" height="7" fill="#2563eb" fill-opacity="0.85"></rect><rect x="222.5" y="268.5" width="7" height="7" fill="#2563eb" fill-opacity="0.85"></rect><rect x="238.5" y="268.5" width="7" height="7" fill="#2563eb" fill-opacity="0.85"></rect><rect x="254.5" y="268.5" width="7" height="7" fill="#2563eb" fill-opacity="0.85"></rect><rect x="270.5" y="268.5" width="7" height="7" fill="#2563eb" fill-opacity="0.85"></rect><rect x="286.5" y="268.5" width="7" height="7" fill="#2563eb" fill-opacity="0.85"></rect><rect x="174.5" y="284.5" width="7" height="7" fill="#2563eb" fill-opacity="0.85"></rect><rect x="190.5" y="284.5" width="7" height="7" fill="#2563eb" fill-opacity="0.85"></rect><rect x="206.5" y="284.5" width="7" height="7" fill="#2563eb" fill-opacity="0.85"></rect><rect x="222.5" y="284.5" width="7" height="7" fill="#2563eb" fill-opacity="0.85"></rect><rect x="238.5" y="284.5" width="7" height="7" fill="#2563eb" fill-opacity="0.85"></rect><rect x="254.5" y="284.5" width="7" height="7" fill="#2563eb" fill-opacity="0.85"></rect><rect x="270.5" y="284.5" width="7" height="7" fill="#2563eb" fill-opacity="0.85"></rect><rect x="286.5" y="284.5" width="7" height="7" fill="#2563eb" fill-opacity="0.85"></rect> <text x="233" y="316" font-size="15" fill="#6f6a62" text-anchor="middle">int8 codes</text> <rect x="411.5" y="201.5" width="13" height="13" fill="none" stroke="#6f6a62" stroke-opacity="0.4" stroke-width="1.2" stroke-dasharray="3,3"></rect><rect x="427.5" y="201.5" width="13" height="13" fill="none" stroke="#6f6a62" stroke-opacity="0.4" stroke-width="1.2" stroke-dasharray="3,3"></rect><rect x="443.5" y="201.5" width="13" height="13" fill="none" stroke="#6f6a62" stroke-opacity="0.4" stroke-width="1.2" stroke-dasharray="3,3"></rect><rect x="459.5" y="201.5" width="13" height="13" fill="none" stroke="#6f6a62" stroke-opacity="0.4" stroke-width="1.2" stroke-dasharray="3,3"></rect><rect x="475.5" y="201.5" width="13" height="13" fill="none" stroke="#6f6a62" stroke-opacity="0.4" stroke-width="1.2" stroke-dasharray="3,3"></rect><rect x="491.5" y="201.5" width="13" height="13" fill="none" stroke="#6f6a62" stroke-opacity="0.4" stroke-width="1.2" stroke-dasharray="3,3"></rect><rect x="411.5" y="217.5" width="13" height="13" fill="none" stroke="#6f6a62" stroke-opacity="0.4" stroke-width="1.2" stroke-dasharray="3,3"></rect><rect x="427.5" y="217.5" width="13" height="13" fill="none" stroke="#6f6a62" stroke-opacity="0.4" stroke-width="1.2" stroke-dasharray="3,3"></rect><rect x="443.5" y="217.5" width="13" height="13" fill="none" stroke="#6f6a62" stroke-opacity="0.4" stroke-width="1.2" stroke-dasharray="3,3"></rect><rect x="459.5" y="217.5" width="13" height="13" fill="none" stroke="#6f6a62" stroke-opacity="0.4" stroke-width="1.2" stroke-dasharray="3,3"></rect><rect x="475.5" y="217.5" width="13" height="13" fill="none" stroke="#6f6a62" stroke-opacity="0.4" stroke-width="1.2" stroke-dasharray="3,3"></rect><rect x="491.5" y="217.5" width="13" height="13" fill="none" stroke="#6f6a62" stroke-opacity="0.4" stroke-width="1.2" stroke-dasharray="3,3"></rect><rect x="411.5" y="233.5" width="13" height="13" fill="none" stroke="#6f6a62" stroke-opacity="0.4" stroke-width="1.2" stroke-dasharray="3,3"></rect><rect x="427.5" y="233.5" width="13" height="13" fill="none" stroke="#6f6a62" stroke-opacity="0.4" stroke-width="1.2" stroke-dasharray="3,3"></rect><rect x="443.5" y="233.5" width="13" height="13" fill="none" stroke="#6f6a62" stroke-opacity="0.4" stroke-width="1.2" stroke-dasharray="3,3"></rect><rect x="459.5" y="233.5" width="13" height="13" fill="none" stroke="#6f6a62" stroke-opacity="0.4" stroke-width="1.2" stroke-dasharray="3,3"></rect><rect x="475.5" y="233.5" width="13" height="13" fill="none" stroke="#6f6a62" stroke-opacity="0.4" stroke-width="1.2" stroke-dasharray="3,3"></rect><rect x="491.5" y="233.5" width="13" height="13" fill="none" stroke="#6f6a62" stroke-opacity="0.4" stroke-width="1.2" stroke-dasharray="3,3"></rect><rect x="411.5" y="249.5" width="13" height="13" fill="none" stroke="#6f6a62" stroke-opacity="0.4" stroke-width="1.2" stroke-dasharray="3,3"></rect><rect x="427.5" y="249.5" width="13" height="13" fill="none" stroke="#6f6a62" stroke-opacity="0.4" stroke-width="1.2" stroke-dasharray="3,3"></rect><rect x="443.5" y="249.5" width="13" height="13" fill="none" stroke="#6f6a62" stroke-opacity="0.4" stroke-width="1.2" stroke-dasharray="3,3"></rect><rect x="459.5" y="249.5" width="13" height="13" fill="none" stroke="#6f6a62" stroke-opacity="0.4" stroke-width="1.2" stroke-dasharray="3,3"></rect><rect x="475.5" y="249.5" width="13" height="13" fill="none" stroke="#6f6a62" stroke-opacity="0.4" stroke-width="1.2" stroke-dasharray="3,3"></rect><rect x="491.5" y="249.5" width="13" height="13" fill="none" stroke="#6f6a62" stroke-opacity="0.4" stroke-width="1.2" stroke-dasharray="3,3"></rect><rect x="411.5" y="265.5" width="13" height="13" fill="none" stroke="#6f6a62" stroke-opacity="0.4" stroke-width="1.2" stroke-dasharray="3,3"></rect><rect x="427.5" y="265.5" width="13" height="13" fill="none" stroke="#6f6a62" stroke-opacity="0.4" stroke-width="1.2" stroke-dasharray="3,3"></rect><rect x="443.5" y="265.5" width="13" height="13" fill="none" stroke="#6f6a62" stroke-opacity="0.4" stroke-width="1.2" stroke-dasharray="3,3"></rect><rect x="459.5" y="265.5" width="13" height="13" fill="none" stroke="#6f6a62" stroke-opacity="0.4" stroke-width="1.2" stroke-dasharray="3,3"></rect><rect x="475.5" y="265.5" width="13" height="13" fill="none" stroke="#6f6a62" stroke-opacity="0.4" stroke-width="1.2" stroke-dasharray="3,3"></rect><rect x="491.5" y="265.5" width="13" height="13" fill="none" stroke="#6f6a62" stroke-opacity="0.4" stroke-width="1.2" stroke-dasharray="3,3"></rect><rect x="411.5" y="281.5" width="13" height="13" fill="none" stroke="#6f6a62" stroke-opacity="0.4" stroke-width="1.2" stroke-dasharray="3,3"></rect><rect x="427.5" y="281.5" width="13" height="13" fill="none" stroke="#6f6a62" stroke-opacity="0.4" stroke-width="1.2" stroke-dasharray="3,3"></rect><rect x="443.5" y="281.5" width="13" height="13" fill="none" stroke="#6f6a62" stroke-opacity="0.4" stroke-width="1.2" stroke-dasharray="3,3"></rect><rect x="459.5" y="281.5" width="13" height="13" fill="none" stroke="#6f6a62" stroke-opacity="0.4" stroke-width="1.2" stroke-dasharray="3,3"></rect><rect x="475.5" y="281.5" width="13" height="13" fill="none" stroke="#6f6a62" stroke-opacity="0.4" stroke-width="1.2" stroke-dasharray="3,3"></rect><rect x="491.5" y="281.5" width="13" height="13" fill="none" stroke="#6f6a62" stroke-opacity="0.4" stroke-width="1.2" stroke-dasharray="3,3"></rect> <text x="457" y="316" font-size="15" fill="#6f6a62" font-style="italic" text-anchor="middle">never stored</text> <path d="M 316 247 L 600 247" stroke="#e21833" stroke-width="2.5" marker-end="url(#cpuarr-red)"></path> <text x="458" y="191" font-size="16" fill="#e21833" font-style="italic" text-anchor="middle">score + select, one fused pass</text> <rect x="619.5" y="201.5" width="13" height="13" fill="#15803d" fill-opacity="0.75"></rect><rect x="635.5" y="201.5" width="13" height="13" fill="#15803d" fill-opacity="0.75"></rect><rect x="619.5" y="217.5" width="13" height="13" fill="#15803d" fill-opacity="0.75"></rect><rect x="635.5" y="217.5" width="13" height="13" fill="#15803d" fill-opacity="0.75"></rect><rect x="619.5" y="233.5" width="13" height="13" fill="#15803d" fill-opacity="0.75"></rect><rect x="635.5" y="233.5" width="13" height="13" fill="#15803d" fill-opacity="0.75"></rect><rect x="619.5" y="249.5" width="13" height="13" fill="#15803d" fill-opacity="0.75"></rect><rect x="635.5" y="249.5" width="13" height="13" fill="#15803d" fill-opacity="0.75"></rect><rect x="619.5" y="265.5" width="13" height="13" fill="#15803d" fill-opacity="0.75"></rect><rect x="635.5" y="265.5" width="13" height="13" fill="#15803d" fill-opacity="0.75"></rect><rect x="619.5" y="281.5" width="13" height="13" fill="#15803d" fill-opacity="0.75"></rect><rect x="635.5" y="281.5" width="13" height="13" fill="#15803d" fill-opacity="0.75"></rect> <text x="634" y="316" font-size="15" fill="#6f6a62" text-anchor="middle">top-2</text>
+</svg>
+<div style="font-size: 0.82em; margin-top: 0.3em;">
+<ul>
+<li><strong>Quantize</strong> so the scores run on <strong>integer SIMD dot products</strong> — byte codes needed for VNNI; less memory traffic too. <!-- P51, P86; qpipnn 01_Introduction.tex:47 --></li>
+<li>We use TurboQuant variant (fast Walsh-Hadamard rotation + Lloyd-Max Codebook) - could use others <!-- P86, P51, P88 --></li>
+<li><strong>Fuse</strong> scoring with top-k selection — the distance matrix is <strong>never materialized</strong>. <!-- P16, P53, P55 --></li>
+</ul>
+</div>
+<!-- Transitional figure (v3.1-VecDB, Tobias 2026-09-02: "drop the kernel slides; in their
+     place transitional figures that are higher level — just mention fusion, regularization
+     etc."): a static inline SVG contrasting the PiPNN I leaf kernel (fp32 vectors → stored
+     score matrix → per-row sort) with this paper's (int8 codes → one fused score-and-select
+     pass, matrix never stored). Deck palette; the grids are schematic (6 points × 8 dims,
+     k = 2). Claims: P51 (codes), P16/P53/P55 (fusion). The kernel itself — the vnni_topk
+     clip, the P14 quality receipt, the instruction detail — lives in backup.
+     v3.2-VecDB (Tobias 2026-09-03): two points added under the figure — (1) quantization's
+     job here is to feed integer SIMD kernels (paper: 01_Introduction.tex:47 credits memory
+     traffic AND low-precision MAC; 03_Method.tex:49-69 vpdpbusd u8 x i8), (2) the kernels are
+     written against the template, not a quantizer (P86 — RaBitQ/DRIVE/EDEN; scoped to
+     dot-product quantizers, NOT PQ/FastScan). FACT-CHECK LIMIT: the paper never says quality
+     is quantizer-invariant — TQ4 misses the 0.9 recall floor on five GPU datasets (P88), so
+     the slide says "bit width still matters" and the notes carry the caveat. -->
+<aside class="notes">
+<p>About 30 seconds; a transition, not an explanation. Top row, PiPNN I: score the fp32 vectors with a GEMM, store the whole distance matrix, then sort every row for its top-2. Bottom row, this paper. Bullet one: quantization’s job here is mostly to feed the hardware — byte codes are what the integer dot-product instructions want, VNNI on CPU, WGMMA on GPU — and it cuts memory traffic, which is what binds on the GPU at high dimension (P85). Bullet two, for the quantization people in the room: the kernels are written against a template, integer inner product plus a small per-vector correction, so the choice of quantizer is secondary — RaBitQ, DRIVE and EDEN would plug into the same kernels (P86); our TurboQuant variant replaces the residual QJL sketch with an extra codebook bit plus a per-vector rescale (P51). Bit width does still matter: TQ4 misses the recall floor on five GPU datasets, which is why the GPU headline uses RSQ8 (P88). Bullet three, fusion: each score drops straight into the top-2 and the matrix is never stored. Instruction-level detail is in backup. Next: what it buys.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="cpu-build-times" class="slide level2">
+<h2>CPU build times</h2>
+<p><strong>4–8× faster than quantized Vamana</strong> (geomean <strong>5.9×</strong>); <strong>40.7×</strong> faster than unquantized Vamana; up to <strong>8×</strong> faster than the original PiPNN. <!-- P12, P13 --></p>
+
+<img data-src="assets/figures/tables/cpu_build.png" class="quarto-figure quarto-figure-center r-stretch" style="width:66.0%"><div style="text-align: center; font-size: 0.55em; margin-top: 0.3em;">
+<p><span class="muted">Seconds; green = fastest per row. <strong>VF32</strong> / <strong>VQ</strong> = unquantized / quantized Vamana; <strong>NNDQ</strong> = PyNNDescent. Right half: direct 10-NN graphs — revisited at the end.</span> <!-- tab:cpu_build caption; P90 for the billion-point rows --></p>
+</div>
+<!-- v3.2-VecDB (Tobias 2026-09-03: "the build time table would be more appropriate here vs
+     the plot; show the plot after with the headline 'Index Quality Preserved'"). Table source:
+     qpipnn_paper 05_Experiments.tex:140-163 (tab:cpu_build), rendered via
+     scripts/tables/cpu_build.tex -> assets/figures/tables/cpu_build.png. Claims: P12, P13
+     (headline, fairest-first order), P90 (the DEEP / MS-Turing / Text2Image rows: 564 / 567 /
+     730 s — "about 10 minutes" on the TL;DR). The right half previews the direct k-NN task
+     (P21's absolute times), named in the legend so it is not a mystery column. -->
+<aside class="notes">
+<p>About 40 seconds. Seconds, green is fastest per row. Left half, the index build: this paper, the original PiPNN, unquantized Vamana, quantized Vamana. Fair number first, again: against quantized Vamana, 4 to 8 times, geomean 5.9; against unquantized, 40.7; and up to 8 times over the original PiPNN — the OpenAI row, 36 seconds to 4.4 (P12, P13). The bottom three rows are the billion-point datasets: DEEP and MS-Turing in under ten minutes, Text2Image in twelve, against hours for unquantized Vamana on one machine (P90). The right half is the direct k-NN task — hold it, that is the last act. Machines in backup (P33): c3-highmem-192, c4-highmem-288 for the billion-point rows.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="index-quality-preserved" class="slide level2">
+<h2>Index quality preserved</h2>
+<div class="quarto-figure quarto-figure-center">
+<figure>
+<p><img data-src="assets/figures/CPU/index-quality/main_two_panel.png" class="quarto-figure quarto-figure-center" style="width:78.0%"></p>
+</figure>
+</div>
+<div class="axis-hint" style="left: 3.5%; top: 30%;">
+<svg viewbox="0 0 44 110" width="36" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+<path d="M 22 100 C 17 72, 27 46, 22 14" fill="none" stroke="#e21833" stroke-width="3.5" stroke-linecap="round"></path><path d="M 12 27 L 22 12 L 32 29" fill="none" stroke="#e21833" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+<span class="axis-hint-label">Higher is<br>better</span>
+</div>
+<div class="fragment" style="text-align: center;">
+<p>Quantized PiPNN matches FP32 PiPNN’s QPS at every recall: geomean ratios <strong>0.98</strong> (TQ4) and <strong>0.99</strong> (RSQ8). <!-- P14 --></p>
+</div>
+<!-- Figure source: qpipnn_paper figures/CPU/index-quality/main_two_panel.pdf — QPS vs recall
+     with BUILD TIMES in the legend (wiki-all, OpenAI-ArXiv). Claims: P14 (on-slide receipt).
+     v3.2-VecDB: split off the old "CPU results" slide (headline + table now precede it); the
+     P15 kernel line moved to the kernel-ablation slide.
+     .axis-hint: first occurrence of the QPS-recall plot type in this deck. The image carries
+     .nostretch (v3.2): without the headline above it, Quarto's auto-r-stretch blew the lone
+     image up until its "QPS" axis label sat under the hint (2026-09-03 screenshot QA); at a
+     fixed 78% the hint at left 3.5% sits in the gutter left of the figure. -->
+<aside class="notes">
+<p>About 30 seconds. The argument is a shape plus a legend: the curves lie on top of each other — quantized PiPNN, FP32 PiPNN, both Vamanas — while the legend build times differ by an order of magnitude; on wiki-all, 3.3 hours for Vamana-FP32 and 2.4 minutes for PiPNN-TQ4. Click: quantization costs no quality — QPS ratios 0.98 and 0.99 versus FP32 at matched recall (P14), and it is the same picture on the GPU, shown again there. Scope if asked: twelve datasets, up to a billion points on CPU (P24). Encoding cost if asked: small and paid once — presenter knowledge, not a number for a slide.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+<!-- ============ 10:00-12:00 GPIPNN ============ -->
+</section>
+<section id="gpipnn-keep-the-tensor-cores-fed" class="slide level2">
+<h2>GPiPNN: keep the tensor cores fed</h2>
+<video class="seamless" src="assets/videos/bucket_even.mp4" autoplay="" muted="" playsinline="" preload="auto" style="width: 38%; display: block; margin: 0.2em auto 0;">
+</video>
+<div style="font-size: 0.85em; margin-top: 0.3em;">
+<ul>
+<li><strong>Regularize</strong> the leaves — cap and pack them — so every leaf is one contiguous segment of a dense slab and no block straggles. <!-- P59, P35, P93 --></li>
+<li><strong>Feed asynchronously</strong> — TMA streams tiles into a shared-memory ring while the tensor cores consume the current stripe. <!-- P60, P93 --></li>
+<li><strong>Score with WGMMA, select in registers</strong> — the score tile is never written to memory. <!-- P60, P93 --></li>
+</ul>
+</div>
+<div style="font-size: 0.72em; margin-top: 0.35em; text-align: center;">
+<p><span class="muted">Everything else becomes a sort — HashPrune included: sort candidates by owner and distance, merge once, no locks. Legal because HashPrune is order-independent.</span> <!-- P58, P61, P8 --></p>
+</div>
+<!-- v3.2-VecDB, second pass (Tobias 2026-09-03, after reading the GPU code): "our goal on
+     GPU is to keep the tensors fed; the approach is regularize problem sizes + asynchronicity
+     + WGMMA" — the honest headline, since leaf processing dominates GPU runtime too (P91).
+     Three bullets = the three moves that serve the tensor cores; the muted closer keeps the
+     sort-and-merge line so the HashPrune slide's "order-independence makes the GPU version
+     possible" hook is still cashed (P61, P8). Clip unchanged: bucket_even.mp4 (regularize).
+     CODE FACTS (origin/tgpu-merge-turboquant, verified 2026-09-03; P93): regularization is
+     CAP-AND-PACK, not equalization — hard cap `cluster_size` (default 512 in common/utils.cuh:74;
+     the paper says ~1024 — CHECK the run configs before quoting either), oversized leaves
+     chopped positionally into cap-sized chunks, undersized siblings of the same parent group
+     greedily packed in key order (legacy/impl/kernels_phase7_impl.cuh:28-50,118-130); no lower
+     bound. Phase 8 = ONE BLOCK PER LEAF (tq/hopper/tq_scoring_hopper_phase8.cu:271), looping
+     device-side over 64-query batches x 128-point tiles; the slab is a per-batch gather in
+     GLOBAL memory, shared memory holds only the 4-stage ring. Warp-specialized: tids 0-127
+     issue TMA, 128-255 run wgmma + epilogue (common/hopper_scoring_skeleton.cuh:2272-2284);
+     one wgmma group in flight (:2425-2434). PAPER-VS-CODE LANDMINES (keep off the slide): the
+     paper's merge-key sentence ((owner<<16)|dist16, sketch in payload) is not the code
+     (node<<32|dist20|hash12); "single sequential pass" is one warp per owner row; host-side
+     tile expansion is Phase 4/6, not the leaf kernel. "No single kernel dominates" is in an
+     appendix \hide{} block — not citable. -->
+<aside class="notes">
+<p>Timing: 10:00-12:00 for the GPU act — three slides; this one is about 35 seconds, over the clip. The goal on a GPU is one thing: keep the tensor cores fed. PiPNN as written cannot — recursion, skewed leaves, locked reservoirs (P35). Three moves. Regularize, the clip: sort the points by leaf, cap the big leaves, pack the small siblings, so a batch of leaves is one dense slab, every leaf a contiguous segment, and no block straggles behind the launch (P59). Feed asynchronously: TMA copies the next tile into a shared-memory ring while the tensor cores consume the current 64-dimension stripe — producer warps load, consumer warps compute (P60). Score with WGMMA and select in registers: a 64-by-128 score tile is reduced over the whole dimension, then each lane keeps its top-2 in registers and four lanes merge by shuffle; the score tile is never written to memory (P60). The closer, quietly: everything else became a sort — recursion is a fixed number of assign-then-sort rounds (P58), and HashPrune is sort by owner and distance, then one merge pass, no locks — legal because the reservoir is order-independent, the theorem from the middle of the talk (P61, P8). Leaf scoring still dominates GPU time, less than on CPU (P91). If asked about leaf sizes: capped and packed, not equalized. If asked about the merge key: sort by owner, then distance, then one pass — leave the bit layout alone. The tile-shape table — queries by points by dims per instruction on each platform — is in backup for the kernel questions. Then the numbers.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="gpu-build-times" class="slide level2">
+<h2>GPU build times</h2>
+<p>No quantization anywhere: geomean <strong>8.1× over Jasper</strong>, <strong>16.3× over CAGRA</strong>. With RSQ8: <strong>13.3×</strong> and <strong>27×</strong>, up to <strong>43.7×</strong> and <strong>50×</strong>. <!-- P18, P19 --></p>
+
+<img data-src="assets/figures/tables/gpu_build.png" class="quarto-figure quarto-figure-center r-stretch" style="width:76.0%"><div style="text-align: center; font-size: 0.55em; margin-top: 0.3em;">
+<p><span class="muted">Unquantized CAGRA builds its initial graph with NN-Descent, which is L2-only — hence the “–” cells on the MIPS datasets.</span> <!-- P82 --></p>
+</div>
+<!-- Table source: qpipnn_paper tables/gpu_build.tex (rendered via scripts/tables/gpu_build.tex;
+     green = fastest per row). Claims: P18, P19 (headline order is fairness-first: the
+     unquantized like-for-like pair leads), P82 (the "--" cells). Both baselines are
+     GPU-native systems and both sets of authors are in the room — the caveats belong out
+     loud (notes: P84, P81). -->
+<aside class="notes">
+<p>About 50 seconds. Lead with the like-for-like row, not the best row: with no quantization anywhere, geomean 8.1 over Jasper and 16.3 over CAGRA; turning RSQ8 on gives 13.3 and 27, with maxima of 43.7 and 50. The footnote is the honest reading of the dashes: unquantized CAGRA builds its initial graph with NN-Descent, which is specialized to L2, so it does not run on the unnormalized MIPS datasets (P82). Two caveats out loud, in this order. One: most rows are 10-million-point slices, and a 1-million slice for MS-Arctic, because the baselines do not complete at full scale on one 80GB H100 — and at 100M we loosened Jasper’s mbr from 0.02 to 0.004 to avoid an illegal access, a workaround we are grateful for, not a criticism (P84). Two: the 100M CAGRA numbers are excluded from the aggregates — CAGRA’s DEEP-100M build is about 4.7 times slower than what Jasper reports for CAGRA on a slower A100; we reproduced it and traced it to the cuVS 25.04 large-scale build path, so we did not report a speedup against an unreliable baseline (P81, backup). Tuning protocol is the first backup slide.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="gpu-index-quality" class="slide level2">
+<h2>GPU index quality</h2>
+
+<img data-src="assets/figures/GPU/ann_qps_recall_grid_2panel.png" class="quarto-figure quarto-figure-center r-stretch" style="width:74.0%"><div style="text-align: center;">
+<p>Same picture as on CPU: <strong>the curves overlap</strong>. The speedups are build-time only. <!-- P19 context; quality via Jasper's query code for every method (P83). --></p>
+</div>
+<!-- Figure source: qpipnn_paper results/GPU/ann_qps_recall_grid_2panel.pdf. The equal-quality
+     half of the claim must be shown, not asserted, in front of the systems' own authors.
+     No .axis-hint here — repeat of the QPS-recall plot type (first occurrence is the CPU
+     results slide). -->
+<aside class="notes">
+<p>About 35 seconds, and the fairness line is the point. Say it explicitly: index quality for every method here — GPiPNN, Jasper and the CAGRA variants — is measured through Jasper’s own query code, so this is the quality of the graphs, not of anyone’s search kernel, ours included (P83). The curves sit on top of each other; the build-time differences are not bought with quality. Why Jasper’s query code, if asked: the strongest GPU search implementation we had, and one query engine for all methods removes the confound. Full grid and complete tables in backup.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+<!-- ============ 12:00-13:30 DIRECT k-NN ============ -->
+</section>
+<section id="direct-k-nn-graphs-drop-the-prunes" class="slide level2">
+<h2>Direct k-NN graphs: drop the prunes</h2>
+<div class="nostretch" style="display: flex; gap: 1.2%; align-items: center; width: 94%; margin: 0.8em auto 0;">
+<img class="nostretch" src="assets/figures/steps/partition.png" style="width: 24%;" alt="partition"><img class="nostretch" src="assets/figures/steps/pick.png" style="width: 24%;" alt="pick"><img class="nostretch" src="assets/figures/steps/prune.png" style="width: 24%; opacity: 0.22;" alt="prune (dropped)"><img class="nostretch" src="assets/figures/steps/finalprune.png" style="width: 24%; opacity: 0.22;" alt="final prune (dropped)">
+</div>
+<div class="muted" style="display: flex; gap: 1.2%; width: 94%; margin: 0.25em auto 0; font-size: 0.7em; text-align: center;">
+<span style="width: 24%;">partition</span><span style="width: 24%;">pick — a larger leaf <em>k</em></span><span style="width: 24%; opacity: 0.45;">HashPrune</span><span style="width: 24%; opacity: 0.45;">final prune</span>
+</div>
+<div class="fragment" data-fragment-index="1" style="text-align: center; margin-top: 1.0em;">
+<p><mark><strong>Keep partition + pick: the leaf top-k rows <em>are</em> the k-NN graph.</strong></mark> <!-- P10 pipeline minus the two prune stages; leaf-rows-as-output per the direct-mode framing (P20-P22 context) --></p>
+</div>
+<!-- v3.2-VecDB (Tobias 2026-09-03: "S23 is way too busy — drop the partitioning visualization
+     or make it two slides"): TWO slides. This one is the mechanism — the walkthrough stills as
+     a four-frame filmstrip (no new asset) with the two prune stages greyed (opacity 0.22; the
+     greying IS the message) and captions; the results plot and numbers follow. -->
+<aside class="notes">
+<p>Timing: 12:00-13:30 for the direct k-NN act — two slides; this one is about 40 seconds. The framing: clustering, dedup and manifold learning consume a k-NN graph, not an index, and the obvious recipe — build an index, then query every point — dilutes the build-time win with the query-all pass. The filmstrip is the walkthrough: partition, pick, and then the two stages we no longer run. Click one, the mark: the leaves already witnessed the neighbors, so fill the k-NN rows straight from the leaf top-k, with a larger k inside the leaf — the top-k IS the output. Click two: no HashPrune, no final prune, no query pass. Then the numbers.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="direct-k-nn-graphs-results" class="slide level2">
+<h2>Direct k-NN graphs: results</h2>
+<div class="quarto-figure quarto-figure-center">
+<figure>
+<p><img data-src="assets/figures/CPU/knn-recall/main_two_panel.png" class="quarto-figure quarto-figure-center" style="width:74.0%"></p>
+</figure>
+</div>
+<div class="axis-hint" style="left: 3.5%; top: 30%;">
+<svg viewbox="0 0 44 110" width="34" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+<path d="M 22 10 C 27 38, 17 64, 22 96" fill="none" stroke="#e21833" stroke-width="3.5" stroke-linecap="round"></path><path d="M 12 83 L 22 98 L 32 81" fill="none" stroke="#e21833" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+<span class="axis-hint-label">Lower is<br>better</span>
+</div>
+<div style="text-align: center; font-size: 0.92em;">
+<p>10-NN graphs at recall ≥ 0.9: <strong>4–10× faster than PyNNDescent</strong>, <strong>5–20× than Vamana</strong> (geomeans <strong>5.9×</strong> / <strong>10.3×</strong>). <!-- P21 --></p>
+<p>Up to <strong>13×</strong> on CPU and <strong>6.6×</strong> on GPU over the prior best; a billion-scale 10-NN graph in <strong>under 16 minutes</strong>. <!-- P20, P22 --></p>
+</div>
+<!-- Figure source: qpipnn_paper figures/CPU/knn-recall/main_two_panel.pdf (build time vs
+     recall; lower is better). Claims: P20, P21, P22. GPU direct k-NN bars (P23) and
+     animations/direct_knn_graph.mp4 are in backup.
+     .axis-hint: first occurrence of the build-time-vs-recall plot type; the image carries
+     .nostretch (auto-r-stretch put the "Build time" axis label under the hint — 2026-09-03
+     screenshot QA), so at a fixed 74% the hint sits in the gutter left of the figure. -->
+<aside class="notes">
+<p>About 50 seconds. Build time against recall, lower is better: at recall 0.9 and above, 4 to 10 times faster than PyNNDescent and 5 to 20 times faster than quantized Vamana, geomeans 5.9 and 10.3, up to 13 times over the prior best on CPU and 6.6 on GPU — and a billion-scale 10-NN graph in under sixteen minutes; the absolute times were the right half of the CPU table. Caveat to say out loud: these are the second paper’s numbers, so the quantized kernels are inside them. GPU direct k-NN bars in backup — geomeans 7.12 over Jasper, 2.91 over NN-Descent, 9.84 over CAGRA (P23) — with RSQ8 as the GPU k-NN configuration (P88).</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+<!-- ============ 13:30-15:00 CLOSE ============ -->
+</section>
+<section id="summary" class="slide level2">
+<h2>Summary</h2>
+<div class="columns">
+<div class="column" style="width:56%;">
+<ul>
+<li class="fragment"><strong>Remove search</strong> from construction: what remains is <strong>top-k</strong>. <!-- P3, P11 --></li>
+<li class="fragment"><strong>Fast top-k on CPU</strong> — quantize, then fuse: <strong>4–8×</strong> over quantized Vamana. <!-- P13 --></li>
+<li class="fragment"><strong>GPiPNN</strong> — history-independence lets us <strong>sort instead of lock</strong>: <strong>8.1× / 16.3×</strong> over Jasper / CAGRA. <!-- P8, P19 --></li>
+<li class="fragment"><strong>Direct k-NN graphs</strong> from the leaves: billion-scale 10-NN in <strong>under 16 minutes</strong>. <!-- P22 --></li>
+<li class="fragment">Next: <strong>beyond a single machine</strong>, and <strong>other accelerators</strong>. <!-- qpipnn 06_Conclusion.tex: "scale beyond a single machine and port the design to other accelerators". --></li>
+</ul>
+</div><div class="column" style="width:44%;">
+<p><img data-src="assets/figures/intro_speedup.png" style="width:100.0%"></p>
+</div></div>
+<!-- Figure source: qpipnn_paper figures/intro_speedup.pdf — the TL;DR figure again, on
+     purpose: the loop closes. Future work is one clause, taken in substance from the
+     paper's conclusion; no invented limitations. -->
+<aside class="notes">
+<p>Timing: 13:30-15:00 with the thank-you slide. About 50 seconds, one breath per bullet, no new information — the first bullet is the outline’s thesis coming home. Remove search, and everything left is top-k. Make that top-k fast on CPU: quantize the comparisons, fuse scoring with selection. The theorem from the middle of the talk is what makes the GPU version a rebuild rather than a port: no locks, sort and merge. Drop the prunes and the leaf top-k rows already are a k-NN graph, which is what most downstream consumers actually want. Future work in one clause: scale beyond a single machine — partitioning creates independent subproblems and HashPrune merges without global coordination — and port the design to other accelerators.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="section" class="slide level2 center">
+<h2></h2>
+<div style="text-align: center; font-size: 1.6em;">
+<p><strong>Thank you — questions?</strong></p>
+</div>
+<div class="columns" style="margin-top: 1.0em; text-align: center;">
+<div class="column" style="width:50%;">
+<p><img data-src="assets/figures/qr_paper2.png" width="205"></p>
+<p><span class="muted" style="font-size: 0.58em;"><strong>Paper</strong> · openreview.net/forum?id=8GzbSQMrLA</span></p>
+</div><div class="column" style="width:50%;">
+<p><img data-src="assets/figures/qr_code.png" width="205"></p>
+<p><span class="muted" style="font-size: 0.58em;"><strong>Code</strong> · github.com/ParAlg/PiPNN</span></p>
+</div></div>
+<div style="text-align: center; margin-top: 1.4em;">
+<p><span class="hot-callout">Graduating in May · <strong>trubel@umd.edu</strong></span></p>
+</div>
+<!-- QR codes: qr_paper2.png -> the VecDB OpenReview forum (8GzbSQMrLA), qr_code.png ->
+     github.com/ParAlg/PiPNN (both generated by .venv qrcode in theme ink #1c1814).
+     The job-market line rides the theme's gold hot-callout pill (plain text, no mailto —
+     red link text fails contrast on gold). Q&A landing slide. -->
+<aside class="notes">
+<p>30 seconds, then open the floor. Point at the QR codes — paper on the left, code on the right — thank the collaborators if there is time, and say the bottom line once: graduating in May, email is on the screen. Then take questions. The backup deck is ordered for this room: GPU baseline tuning protocol first, then the H100 primer and the speed-of-light analysis, then the quantization slides for the RaBitQ and TurboQuant questions, then the CPU and GPU mechanism slides, then PiPNN I evidence and ablations.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+<!-- ============ BACKUP ============ -->
+</section>
+<section id="backup-gpu-baselines-the-tuning-protocol" class="slide level2">
+<h2>Backup: GPU baselines — the tuning protocol</h2>
+<ul>
+<li>For each (method, dataset) pair we swept parameters and kept <strong>one</strong> configuration: for the ANNS index, the <strong>fastest build whose QPS-recall curve matches an unquantized ParlayANN-Vamana graph</strong> by area under the curve; for k-NN graphs, the <strong>fastest build reaching graph recall ≥ 0.9</strong> (5,000 seeded points against brute-force top-10; “–” if nothing clears the floor). <!-- P79 --></li>
+<li><strong>CAGRA</strong> was swept over graph degree ∈ {32, 48, 64} × intermediate degree ∈ {64, 128, 192}; all other methods ran at library defaults. <!-- P79 --></li>
+<li><strong>RaBitQ was not used during queries for any method</strong>, including Jasper — no method gets a query-side quantization advantage. <!-- P87 --></li>
+<li>Asymmetry we should state plainly: on the <strong>k-NN task</strong> CAGRA is fixed at <strong>32/128</strong> on every dataset, while GPiPNN’s k-NN parameters are swept per dataset. <!-- P80 --></li>
+</ul>
+<aside class="notes">
+<p>The slide to jump to if anyone asks “how did you tune our system?” Read the asymmetry bullet out loud rather than waiting to be caught: the general protocol sweeps per (method, dataset), and CAGRA is swept for the index task, but on the k-NN task CAGRA sits at one degree setting while our own k-NN parameters were swept per dataset. Also mention the scale caps (P84): 10M slices for most datasets, 1M for MS-Arctic, because the baselines do not complete at full scale on one 80GB H100; DEEP and MS-Turing additionally at 100M, which needed Jasper’s mbr loosened from 0.02 to 0.004.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="backup-the-100m-cagra-outlier" class="slide level2">
+<h2>Backup: the 100M CAGRA outlier</h2>
+<ul>
+<li>CAGRA’s DEEP-100M build takes <strong>3940 s</strong> — about <strong>4.7× slower</strong> than the <strong>825.6 s</strong> Jasper reports for CAGRA on the same dataset and degree, on a <em>slower</em> A100. <!-- P81 --></li>
+<li>We reproduced the figure on our own H100 (<strong>3868 s</strong>) and traced it to the <strong>cuVS 25.04 large-scale CAGRA graph-build path</strong>, not the dataset. <!-- P81 --></li>
+<li>GPiPNN builds both 100M graphs (DEEP, MS-Turing) in <strong>≈ 20 s</strong> — 5.4× and 8.2× faster than Jasper — but the 100M rows are <strong>excluded from the headline aggregates</strong> rather than reported against an unreliable CAGRA baseline. <!-- P81 --></li>
+</ul>
+<aside class="notes">
+<p>This is a credibility slide, not a scoreboard slide: we found a number that flattered us, could not reproduce it as a property of the dataset, traced it to a library path, and left it out of the aggregates. Say that plainly.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="backup-h100-in-two-instructions" class="slide level2">
+<h2>Backup: H100 in two instructions</h2>
+<ul>
+<li><strong>WGMMA</strong> — a <em>warpgroup</em> (128 threads) collectively issues one tensor-core matrix multiply: a <strong>64 × 128 tile</strong>, advanced 32 contraction-bytes per step, <strong>int8 × int8 → int32</strong> — the GPU sibling of <code>vpdpbusd</code>. <!-- P56 --></li>
+<li><strong>TMA</strong> — the <em>tensor memory accelerator</em> copies whole tiles between global and shared memory from a <strong>descriptor</strong> (base, shape, stride, swizzle), instead of per-thread address arithmetic; it stages the database slab without consuming warp registers. <!-- P57 --></li>
+</ul>
+<p><mark><strong>Goal: overlap computation and memory movement — keep the tensor cores busy.</strong></mark></p>
+<aside class="notes">
+<p>Vocabulary only, and only if asked: a warp is 32 threads, a warpgroup is 4 warps, M = 64 is fixed by the ISA and N = 128 is our tiling choice. The quantization template from the CPU act is what makes int8 × int8 the right currency here.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="backup-what-one-step-feeds-cpu-vs-gpu" class="slide level2">
+<h2>Backup: what one step feeds — CPU vs GPU</h2>
+<div style="font-size: 0.92em; margin-top: 0.9em;">
+<table class="caption-top">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: left;"></th>
+<th style="text-align: left;"><strong>CPU</strong> — AVX-512 VNNI <code>vpdpbusd</code></th>
+<th style="text-align: left;"><strong>GPU</strong> — Hopper <code>wgmma</code></th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;"><strong>One instruction</strong></td>
+<td style="text-align: left;">1 query × <strong>16</strong> points × <strong>4</strong> dims</td>
+<td style="text-align: left;"><strong>64</strong> queries × <strong>128</strong> points × <strong>32</strong> dims</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;"><strong>Per dimension step</strong> (loop body)</td>
+<td style="text-align: left;">every <strong>4</strong> dims: 8 queries × 4 panels → <strong>32</strong> instructions into 32 independent accumulators</td>
+<td style="text-align: left;">every <strong>64</strong> dims: 2 instructions into one accumulator, then wait</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;"><strong>Feeding the dimensions</strong></td>
+<td style="text-align: left;">L1 + hardware prefetch; queries pre-broadcast</td>
+<td style="text-align: left;">TMA → <strong>4-stage</strong> shared-memory ring; producer / consumer warps</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;"><strong>Select</strong></td>
+<td style="text-align: left;">fused per block; two top-2 trackers; lower triangle</td>
+<td style="text-align: left;">per finished tile, in registers; 4-lane shuffle merge; full square</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="fragment" style="text-align: center; margin-top: 1.3em;">
+<p><mark><strong>Same shape on both: score a tile, select in registers, never store the scores.</strong></mark> <!-- P16, P53, P55, P60 --></p>
+</div>
+<!-- Moved to backup 2026-09-04 (Tobias: "for time, S21 to the Q&A section"). NEW in v3.2 (Tobias 2026-09-03: "a slide showing the parallelism for GPU/CPU kernels —
+     how many query vecs, database vecs, instruction-level parallelism along the dimensions").
+     Every cell is P92 (CPU) or P93 (GPU): CPU instruction shape from 03_Method.tex:49-56 (16
+     lanes x 4-dim quad dot products); kMq = 8 and the four 16-point panels from
+     algorithms/PipNN/quantization/pipnn_turboquant-inl.h:35,160-191 (branch turboquant); the
+     pre-broadcast trick is the comment above :195; two trackers / lower triangle = P55. GPU:
+     wgmma M=64, N=128, W=32 bytes (04_Accelerators.tex, "The tensor-core instruction"); the
+     code's TileShape<64,128,64,256,4> (K stripe 64 = 2 atoms, 256 threads, Pipe 4;
+     tq_scoring_hopper_phase8.cu:63), one group in flight (skeleton :2425-2434), 4-lane
+     shuffle merge (:1715-1740), full square (:1444-1497). "dims" = int8 dimensions = bytes. -->
+<aside class="notes">
+<p>Backup, for the kernel questions; read the table across, one row per breath. One instruction: on CPU, one query against sixteen points over four dimensions — sixteen four-dimensional dot products in one instruction; on GPU, a warpgroup instruction scores sixty-four queries against one hundred twenty-eight points over thirty-two dimensions. The loop body is where the instruction-level parallelism lives: every four dimensions the CPU kernel issues thirty-two of those instructions — eight queries across four sixteen-point panels — each into its own accumulator, so thirty-two independent dependency chains hide the instruction latency; that is what fixed the transposed-layout regression in the ablation. Every sixty-four dimensions the GPU issues two tensor-core instructions into one accumulator and waits — no chain trick needed, the instruction is already huge, and the overlap comes from TMA having the next stripes in the ring. Feeding: the CPU relies on L1 and the prefetcher, with queries pre-broadcast so the inner loop does plain loads; the GPU has TMA filling a four-stage ring with producer and consumer warps. Select: both fuse selection into the score loop — the CPU per block with two top-2 trackers over the lower triangle, the GPU per finished tile in registers with a four-lane shuffle merge over the full square, because tensor cores want dense rectangles. Click, the mark: same shape on both — score a tile, select in registers, never store the scores. That is the thesis of the talk, in silicon.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="backup-speed-of-light-on-the-h100" class="slide level2">
+<h2>Backup: speed of light on the H100</h2>
+<ul>
+<li>GPiPNN’s leaf-2-NN kernel is <strong>L2-cache-bandwidth-limited at d ≥ 1536</strong> (OpenAI-2M, DBpedia-3072): <strong>82–95% of unified memory throughput</strong>, while DRAM stays at <strong>37–52%</strong> and the SM pipeline holds at <strong>46–49%</strong> — below NCU’s 60% compute-bound threshold. <!-- P85 --></li>
+</ul>
+<aside class="notes">
+<p>The honest answer to “is the kernel good?”: at high dimension we are within 5-18% of the memory system’s roof, so there is little left on the table there; the remaining headroom is at low dimension, where the pipeline is not saturated either.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="backup-the-quantization-codes" class="slide level2">
+<h2>Backup: the quantization codes</h2>
+<ul>
+<li><strong>Rotate first</strong>, then quantize per coordinate — no coordinate is special afterwards. <!-- P51 --></li>
+<li><strong>RSQ8</strong> — 8-bit rotated scalar quantization. <!-- P51 --></li>
+<li><strong>TQ4</strong> — TurboQuant’s 4-bit Lloyd–Max codebook on rotated coordinates, with its inner-product estimator. <!-- P51 --></li>
+<li>Our TQ4 variant: <strong>replaces the residual (QJL) sketch with an extra codebook bit plus a per-vector rescale</strong>; 4-bit codes decode to int8 in-register (<code>vpshufb</code>). <!-- P51 --></li>
+</ul>
+<!-- Demoted from the main line in v3-VecDB (2026-09-02): the CPU overview slide names the
+     codes and the notes carry this delta verbally. P51's exact framing — the paper's variant
+     REPLACES the QJL residual sketch with an extra codebook bit plus a per-vector rescale;
+     do NOT editorialize this as "accepting bias", which is an inference, not a paper
+     statement. TurboQuant stays a substrate, not the hero (AGENTS.md). -->
+<aside class="notes">
+<p>The slide for “what exactly is your TQ4?” — TurboQuant’s authors are in the room, so be precise about the delta and generous about the lineage: both codes rotate first; RSQ8 is one byte per rotated coordinate; TQ4 is TurboQuant’s 4-bit Lloyd-Max codebook with the inner-product estimator; our variant swaps the residual QJL sketch for an extra codebook bit plus a per-vector rescale, and the 16-entry codebook decodes to int8 in-register with vpshufb.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="backup-the-template-is-the-contribution" class="slide level2">
+<h2>Backup: the template is the contribution</h2>
+<p><mark><strong>Distance = integer inner product + a small per-vector correction.</strong></mark> Anything fitting it rides the same kernels — <strong>VNNI</strong> on CPU, <strong>WGMMA</strong> on GPU. <!-- P51 --></p>
+<ul>
+<li><strong>RaBitQ, DRIVE and EDEN all fit the same template</strong> — distance = integer inner product + a small per-vector correction — and could be substituted for our quantizer without touching the kernels. <!-- P86 --></li>
+<li>We picked the TurboQuant variant for <strong>fast, data-oblivious <span class="math inline">O(d \log d)</span> encoding</strong> and because its decoded codes map cleanly onto <strong>integer dot-product instructions</strong>: VNNI on CPU, WGMMA on GPU. <!-- P86 --></li>
+<li>In the GPU comparisons, <strong>RaBitQ is disabled at query time for every method</strong>, Jasper included. <!-- P87 --></li>
+</ul>
+<aside class="notes">
+<p>The answer to “why not RaBitQ?” — because the paper’s claim is about the kernel template, not the quantizer, and RaBitQ satisfies the template. Do not offer a head-to-head recall comparison from the appendix: that subsection is inside a hidden block and is not part of the compiled paper.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="backup-the-cpu-kernel-quantize-then-fuse" class="slide level2">
+<h2>Backup: the CPU kernel — quantize, then fuse</h2>
+<div class="columns">
+<div class="column" style="width:50%;">
+<div class="fragment" data-fragment-index="1">
+<ul>
+<li><strong>Quantize</strong> the vectors — <strong>TQ4</strong> (TurboQuant) or <strong>RSQ8</strong>: a distance becomes an <strong>integer dot product</strong> plus a small per-vector correction. <!-- P51 --></li>
+</ul>
+</div>
+<div class="fragment" data-fragment-index="2">
+<ul>
+<li><strong>Fuse</strong> scoring with selection: each score goes <strong>straight into the top-k</strong>; the distance matrix is <strong>never materialized</strong>. <!-- P16, P53, P55 --></li>
+</ul>
+</div>
+<div class="fragment" data-fragment-index="3">
+<ul>
+<li><strong>Quality holds</strong>: QPS ratios <strong>0.98</strong> (TQ4) / <strong>0.99</strong> (RSQ8) vs.&nbsp;FP32 at matched recall. <!-- P14 --></li>
+</ul>
+</div>
+</div><div class="column" style="width:50%;">
+<video class="seamless" src="assets/videos/vnni_topk.mp4" autoplay="" muted="" playsinline="" preload="auto" style="width: 100%; margin-top: 0.3em;">
+</video>
+</div></div>
+<!-- Demoted from the main line in v3.1-VecDB (2026-09-02): the main line carries a
+     transitional figure instead. Clip: vnni_topk.mp4 (~6.4s, animations/vnni_lanes.py
+     VnniLanesFused) — the whole fused pass: the query quad broadcasts over the byte panel,
+     one pulse fills the accumulators, the scores drain into a k=3 register tracker (3 kept
+     green / 13 dropped red). Claims: P51, P16/P53/P55, P14. -->
+<aside class="notes">
+<p>The Q&amp;A slide for “what exactly did you do in the kernel?”: quantize (TQ4 or RSQ8 — a distance becomes an integer dot product plus a per-vector correction), fuse (each score goes straight into the top-k tracker; the distance matrix is never materialized), and the receipt (QPS ratios 0.98 and 0.99 versus FP32 at matched recall, P14). The instruction — vpdpbusd, AVX-512 VNNI — and the panel layout are on the next backup slide.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="backup-score-with-one-instruction" class="slide level2">
+<h2>Backup: score with one instruction</h2>
+<p><strong><code>vpdpbusd</code></strong> (AVX-512 VNNI) does <strong>64 multiply-accumulates per instruction</strong> — 16 int32 lanes × 4 byte pairs — decoded quantized codes in, int32 scores out, <strong>in registers</strong>. <!-- P52 --></p>
+<video class="seamless" src="assets/videos/vnni_score.mp4" autoplay="" muted="" playsinline="" preload="auto" style="width: 54%; display: block; margin: 0.4em auto 0;">
+</video>
+<!-- Demoted from the main line in the 2026-09-02 higher-abstraction restructure — the
+     main line keeps the fused vnni_topk.mp4; this is the Q&A slide for "what
+     instruction is that?". Clip: animations/vnni_lanes.py VnniLanesScore (3.8s) — the
+     query quad broadcasts across the 16 lanes and one pulse fills the accumulators
+     (the 64 panel cells ARE the 64 MACs). Claims: P52 (instruction), P53 in notes
+     (panel layout, broadcast, unrolling). -->
+<aside class="notes">
+<p>One vpdpbusd: sixteen int32 lanes, four byte pairs each, sixty-four MACs — the sixty-four cells in the panel on screen. Layout (P53): database codes are pre-transposed into panels of sixteen points so each i32 lane owns a distinct point, and the query’s matching 4-byte group is broadcast into every lane. The catch someone always asks: one operand is unsigned, so database codes are stored shifted by +128 and the bias — 128 times the query byte-sum — is subtracted afterwards. Unrolling: six queries by four panels, twenty-four vpdpbusd per iteration, one broadcast amortized over four panels, six independent accumulator chains. Top-k side: displacement sort — per-lane trackers in registers, horizontal merge deferred to the end; k=3 stays entirely in registers, k=10 spills to L1, affordable because top-10 runs only at the root. The leaf instance and its ablation are the next backups.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="backup-the-modern-recipe-in-two-clips" class="slide level2">
+<h2>Backup: the modern recipe, in two clips</h2>
+<div class="columns">
+<div class="column" style="width:52%;">
+<div class="fragment" data-fragment-index="1">
+<p>For each point:</p>
+<ul>
+<li><strong>Candidate generation</strong> — search the partial index. <!-- P1, P2 --></li>
+</ul>
+</div>
+<div class="fragment" data-fragment-index="2">
+<ul>
+<li><strong>Prune</strong> — choose directionally diverse edges. <!-- P29 --></li>
+</ul>
+</div>
+<p><br></p>
+<div class="fragment" data-fragment-index="2">
+<p><span class="muted"><strong>Vamana</strong> (DiskANN) · <strong>HNSW</strong> · <strong>NSG</strong> — all instances of this recipe.</span></p>
+</div>
+</div><div class="column" style="width:48%;">
+<div class="r-stack">
+<div class="fragment fade-in-then-out" data-fragment-index="1">
+<video class="seamless" src="assets/videos/modern_insert.mp4" muted="" playsinline="" preload="auto" style="width: 100%;">
+</video>
+</div>
+<div class="fragment" data-fragment-index="2">
+<video class="seamless" src="assets/videos/modern_prune.mp4" muted="" playsinline="" preload="auto" style="width: 100%;">
+</video>
+</div>
+</div>
+</div></div>
+<!-- animations/insert_prune.py: clip 1 (NON-looping) draws the partial graph, the arriving
+     point, the greedy walk and the green candidate edges, then freezes; clip 2 starts on
+     clip 1's exact final frame, prunes the dominated candidates red (real RNG rule), and
+     settles the kept edges. Demoted from the main line for the 15-minute timebox. -->
+</section>
+<section id="backup-beam-search" class="slide level2">
+<h2>Backup: Beam search</h2>
+<div class="columns">
+<div class="column" style="width:55%;">
+<div class="pseudocode">
+<p><span class="fn">BeamSearch</span>(G, q, source s, beam width L):<br> &nbsp;&nbsp;B ← {s}&nbsp;&nbsp;<span class="cm">▸ beam: best L points seen</span><br> &nbsp;&nbsp;V ← ∅&nbsp;&nbsp;&nbsp;&nbsp;<span class="cm">▸ visited</span><br> &nbsp;&nbsp;<span class="kw">while</span> B ∖ V ≠ ∅:<br> &nbsp;&nbsp;&nbsp;&nbsp;p ← argmin<sub>u ∈ B∖V</sub> D(u, q)<br> &nbsp;&nbsp;&nbsp;&nbsp;B ← B ∪ Neighbors(p)&nbsp;&nbsp;<span class="cm">▸ score every neighbor vs.&nbsp;q</span><br> &nbsp;&nbsp;&nbsp;&nbsp;V ← V ∪ {p}<br> &nbsp;&nbsp;&nbsp;&nbsp;<span class="kw">if</span> |B| &gt; L: B ← closest L points to q in B<br> &nbsp;&nbsp;<span class="kw">return</span> B</p>
+</div>
+<p><mark><strong>Irregular accesses lead to poor cache performance.</strong></mark> <!-- P2 --></p>
+</div><div class="column" style="width:45%;">
+<div class="side-loop">
+<video src="assets/videos/beam_search_kdd.mp4" autoplay="" loop="" muted="" playsinline="" preload="auto">
+</video>
+</div>
+</div></div>
+<!-- BeamSearch pseudocode: P45 (KDD 02_Background.tex:34-58, Algorithm 1). The set-difference
+     glyph is U+2216 (a plain backslash breaks the pseudocode span). -->
+</section>
+<section id="backup-robustprune" class="slide level2">
+<h2>Backup: RobustPrune</h2>
+<div class="mathbox">
+<p><span class="mathbox-kicker">RobustPrune(p, C, α)</span> Sort <span class="math inline">C</span> by <span class="math inline">D(p,\cdot)</span>. Repeat until <span class="math inline">|N(p)| = R</span> or <span class="math inline">C</span> is empty: move the nearest remaining <span class="math inline">y</span> into <span class="math inline">N(p)</span>, then delete every remaining <span class="math inline">z</span> with <span class="math display">\alpha \cdot D(y,z) \;&lt;\; D(p,z), \qquad \alpha \ge 1.</span> <span class="muted">Introduced in DiskANN (Subramanya et al., NeurIPS ’19); <span class="math inline">\alpha = 1</span> is the classical RNG condition.</span> <!-- P29 --></p>
+</div>
+<!-- Exact rule: P29 (KDD 02_Background.tex:79-100). The load-bearing fact for this talk is
+     that RobustPrune needs the COMPLETE candidate set, globally sorted, before any
+     decision — which is what makes it offline. -->
+</section>
+<section id="backup-ivf-cluster-then-scan" class="slide level2">
+<h2>Backup: IVF — cluster, then scan</h2>
+<div class="columns">
+<div class="column" style="width:55%;">
+<p>Partition the points into clusters. A query probes its nearest <strong>centroids</strong> and <strong>exhaustively scans every point inside them</strong>. <!-- P63 --></p>
+<p><br></p>
+<p><strong>Pros</strong> — fast to build · contiguous, SIMD-friendly scans <!-- P63 --></p>
+<p><strong>Cons</strong> — high dimensions force <strong>many probes</strong> per query <!-- P63 --></p>
+</div><div class="column" style="width:45%;">
+<div class="side-loop">
+<video src="assets/videos/ivf_loop_kdd.mp4" autoplay="" loop="" muted="" playsinline="" preload="auto">
+</video>
+</div>
+</div></div>
+</section>
+<section id="backup-the-pruning-problem" class="slide level2">
+<h2>Backup: the pruning problem</h2>
+<div class="columns">
+<div class="column" style="width:52%;">
+<div class="fragment" data-fragment-index="1">
+<ul>
+<li>The union of all leaf graphs is <strong>dense</strong> — and much of it is <strong>redundant</strong>: near-parallel edges, plus back-edges piling into hubs. <!-- Qualitative; the union-without-pruning trap is HCNNG's (P41, P50). --></li>
+</ul>
+</div>
+<div class="fragment" data-fragment-index="2">
+<ul>
+<li><strong>We must prune</strong> — but the classical prune (<strong>RobustPrune</strong>) is <strong>offline</strong>: complete candidate set, globally sorted; buffering the parallel streams is <strong>slow and memory-hungry</strong>. <!-- P29 --></li>
+</ul>
+</div>
+<div class="fragment" data-fragment-index="3">
+<p><mark><strong>Needed: an online prune in bounded memory.</strong></mark></p>
+</div>
+</div><div class="column" style="width:48%;">
+<div class="r-stack">
+<div class="fragment fade-in-then-out" data-fragment-index="1">
+<video class="seamless" src="assets/videos/union_dense.mp4" muted="" playsinline="" preload="auto" style="width: 100%;">
+</video>
+</div>
+<div class="fragment" data-fragment-index="2">
+<video class="seamless" src="assets/videos/union_prune.mp4" muted="" playsinline="" preload="auto" style="width: 100%;">
+</video>
+</div>
+</div>
+</div></div>
+<!-- Demoted to backup in v3.2-VecDB (2026-09-03; the main line folds it into the HashPrune
+     slide). Compressed from talk_kdd.qmd's three-clip version to TWO clips: union_dense (eight leaves' symmetrized 2-NN graphs unioned into one tangle)
+     then union_prune (the RNG-dominated set flushes red and drops, leaving the diverse
+     edges). The middle beat — union_redundant.mp4, the orange domination set — is SPOKEN
+     over clip 1's frozen frame, so clip 2 opens with those edges already marked.
+     animations/leaf_pick.py union act. -->
+<aside class="notes">
+<p>Backup (Q&amp;A: “why not just union the leaf graphs?”). Click one, the union: eight leaves’ tidy graphs unioned — overlap means every point collects candidates from many leaves, and the tangle is the result; in a real build it is thousands of leaves. Over the frozen frame: a large fraction of those edges are dominated — a nearer neighbor in the same direction already covers them — and back-edges pile into hubs. That is HCNNG’s trap: union everything, never prune online, pay in dense adjacency lists and query quality. Click two, what pruning must produce: the dominated set drops, the diverse edges remain. But RobustPrune, the rule every search-built method uses, is offline: complete candidate set, globally sorted, before any decision — and our candidates arrive as parallel streams from leaves racing each other. Click three, read the mark as a spec: online, bounded memory. Next slide is the data structure that meets it.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="backup-hashprune-the-insertion-loop" class="slide level2">
+<h2>Backup: HashPrune — the insertion loop</h2>
+<div class="columns">
+<div class="column" style="width:52%;">
+<p>Per source point <span class="math inline">p</span>: hash each candidate’s <strong>residual direction</strong> <span class="math inline">c - p</span>. On a bucket <strong>collision, keep the nearer</strong>; when full, <strong>evict the farthest</strong>. <!-- P7, P9, P31, P44 --></p>
+<p><br></p>
+<p><strong>Online</strong>, in <strong>bounded memory</strong>: the buckets do the diversity job of RobustPrune’s global sort. <!-- P7, P31 --></p>
+</div><div class="column" style="width:48%;">
+<div class="side-loop">
+<video src="assets/videos/hashprune_insert_kdd.mp4" autoplay="" loop="" muted="" playsinline="" preload="auto">
+</video>
+</div>
+</div></div>
+<!-- Demoted to backup in v3.2-VecDB (the main-line HashPrune slide carries the rule sentence
+     and the same side loop). Visual: animations/hashprune_insert.py HashPruneInsertLoopEven -> hashprune_insert_kdd.mp4
+     (hyperplanes evenly spaced at 0/45/90/135 = eight equal 45-degree sectors). Beat 1: a
+     nearer candidate collides and prunes the farther bucket occupant; beat 2: a farther
+     candidate is dropped. Rule sentence verbatim from talk_kdd.qmd; the spec-tick line is
+     on-slide here because this deck has no separate pruning-spec recap. -->
+<aside class="notes">
+<p>Backup. Walk the loop: residual directions from p; each candidate hashes to a bucket — one of the LSH cones, pointed at the source; two candidates in the same cone are near-parallel, exactly the redundancy the previous slide showed. Beat one: a nearer arrival collides and evicts the farther occupant. Beat two: a farther arrival bounces off a full reservoir. Parameters verbally: m = 12 hyperplanes, and only 6 bits ever hurt (P44); 8 bytes per slot, maintenance at or under about five percent of construction time (P32). Tick the spec: online, candidates insert as they arrive; bounded, fixed slots per point. The third property — the one this room should care about — is the theorem on the next slide.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="backup-hashprune-is-history-independent" class="slide level2">
+<h2>Backup: HashPrune is history-independent</h2>
+<p><br></p>
+<div style="text-align: center;">
+<p><strong>Theorem.</strong> For a fixed hash function <span class="math inline">h_p</span>, candidate set <span class="math inline">C</span>, and reservoir size <span class="math inline">\ell</span>, the final adjacency list produced by HashPrune is unique — independent of the insertion order of candidates in <span class="math inline">C</span>. <!-- P8 --></p>
+</div>
+<div class="fragment" data-fragment-index="1" style="text-align: center; margin-top: 1.0em;">
+<p><strong>Corollary.</strong> Fixing the random seeds for partitioning, <strong>PiPNN is deterministic</strong> — the same index on every build, regardless of thread scheduling. <!-- P77 --></p>
+</div>
+<!-- As at KDD (theorem + determinism corollary). Demoted to backup in v3.2-VecDB: the
+     main-line HashPrune slide states the theorem in one line and carries the GPU hook (P61).
+     Proof sketch + the shuffled-order animation follow. -->
+<aside class="notes">
+<p>Backup, the full statement. Candidates can arrive from thousands of leaves in any order and the graph comes out the same: no schedule to control, no lock order to reason about. Click one, the corollary: the partitioner has the same property, so with fixed seeds a 192-core racy build produces bit-identical indexes every run. Proof sketch next: buckets keep their distance-minimum, eviction keeps the nearest bucket winners, neither rule mentions arrival order.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="backup-history-independence-proof-sketch" class="slide level2">
+<h2>Backup: history-independence — proof sketch</h2>
+<div class="columns">
+<div class="column" style="width:52%;">
+<div class="mathbox">
+<p><span class="mathbox-kicker">Theorem</span> For a fixed hash function <span class="math inline">h_p</span>, candidate set <span class="math inline">C</span>, and reservoir size <span class="math inline">\ell</span>, the final adjacency list produced by HashPrune is <strong>unique — independent of the insertion order</strong> of candidates in <span class="math inline">C</span>. <!-- P8 --></p>
+</div>
+<div class="proofbox">
+<p><span class="mathbox-kicker">Proof sketch</span> (i) The collision rule means bucket <span class="math inline">b</span> ends up holding the <span class="math inline">D(p,\cdot)</span>-minimum among candidates hashing to <span class="math inline">b</span>. (ii) The eviction rule always removes the farthest, so the reservoir ends as the <span class="math inline">\ell</span> nearest bucket winners. Both sets are determined by <span class="math inline">(h_p, C, \ell)</span> alone — order appears nowhere. <span class="math inline">\square</span> &nbsp;<span class="muted">Full proof: the paper’s full version (arXiv).</span></p>
+</div>
+</div><div class="column" style="width:48%;">
+<div class="side-loop">
+<video src="assets/videos/hashprune_invariance.mp4" autoplay="" loop="" muted="" playsinline="" preload="auto">
+</video>
+</div>
+</div></div>
+<!-- The loop replays the same candidate set in a shuffled order and converges to the same
+     reservoir — the visual language the sortmerge_{sort,merge,same} clips reuse on the
+     main line. -->
+</section>
+<section id="backup-pipnn-i-same-quality-an-order-of-magnitude-faster" class="slide level2">
+<h2>Backup: PiPNN I — same quality, an order of magnitude faster</h2>
+<p>Up to <strong>11.6× faster than Vamana</strong> and <strong>12.9× faster than HNSW</strong> at state-of-the-art index quality (average speedups <strong>6.32×</strong> and <strong>10.4×</strong>); billion-scale indexes in <strong>under 20 minutes</strong> on one machine. <!-- P4, P5, P6 --></p>
+
+<!-- Figure source: pipnn_kdd_camera_ready figures/teaser_plot.pdf (build-time speedup over
+     HNSW, per method, 6 datasets). The PiPNN I headline, held out of the main line by
+     design — it lands as one spoken clause at the CPU pivot. -->
+<img data-src="assets/figures/teaser_plot.png" class="quarto-figure quarto-figure-center r-stretch" style="width:56.0%"></section>
+<section id="backup-pipnn-i-quality-billion-scale-datasets" class="slide level2">
+<h2>Backup: PiPNN I quality — billion-scale datasets</h2>
+<div class="columns">
+<div class="column" style="width:50%;">
+<div class="quarto-figure quarto-figure-center">
+<figure>
+<p><img data-src="assets/figures/algorithms_bigann.png" class="quarto-figure quarto-figure-center" style="width:92.0%"></p>
+</figure>
+</div>
+</div><div class="column" style="width:50%;">
+<div class="quarto-figure quarto-figure-center">
+<figure>
+<p><img data-src="assets/figures/algorithms_deep.png" class="quarto-figure quarto-figure-center" style="width:92.0%"></p>
+</figure>
+</div>
+</div></div>
+<p>QPS-vs-recall against the search-built baselines — <strong>build times in the legend</strong>.</p>
+<!-- Figure source: pipnn_kdd_camera_ready figures/algorithms_{bigann,deep}.png
+     (fig:algorithm_experiments). Same-configuration speedups off the legend build times are
+     P74 — speaker notes only, never slide text. -->
+</section>
+<section id="backup-pipnn-i-quality-high-dimensional-embeddings" class="slide level2">
+<h2>Backup: PiPNN I quality — high-dimensional embeddings</h2>
+<div class="columns">
+<div class="column" style="width:50%;">
+<div class="quarto-figure quarto-figure-center">
+<figure>
+<p><img data-src="assets/figures/algorithms_wiki.png" class="quarto-figure quarto-figure-center" style="width:92.0%"></p>
+</figure>
+</div>
+</div><div class="column" style="width:50%;">
+<div class="quarto-figure quarto-figure-center">
+<figure>
+<p><img data-src="assets/figures/algorithms_openai.png" class="quarto-figure quarto-figure-center" style="width:92.0%"></p>
+</figure>
+</div>
+</div></div>
+<p>Wikipedia-Cohere at 768d, OpenAI-ArXiv at 1536d — same picture. <!-- P26 --></p>
+<!-- Figure source: pipnn_kdd_camera_ready figures/algorithms_{wiki,openai}.png. -->
+</section>
+<section id="backup-why-pipnn-i-was-already-fast-hardware-counters" class="slide level2">
+<h2>Backup: why PiPNN I was already fast — hardware counters</h2>
+
+<img data-src="assets/figures/tables/perf_counters.png" class="quarto-figure quarto-figure-center r-stretch" style="width:70.0%"><p>Better locality → superior instructions per cycle: <strong>1.26</strong> vs.&nbsp;0.44 (Vamana) and 0.33 (HNSW). <!-- P75 --></p>
+<!-- Table source: arXiv full version (2602.21247) 10_Appendix.tex tab:perf-averages —
+     average perf counters during construction, values x10^11, prefetching disabled for
+     Vamana (the table's own caveat); rendered via scripts/tables/perf_counters.tex.
+     Narrative + IPC: camera-ready 06_Experiments.tex:180-181. Claim: P75. -->
+</section>
+<section id="backup-where-cpu-build-time-goes-now" class="slide level2">
+<h2>Backup: where CPU build time goes now</h2>
+
+<!-- Figure source: qpipnn_paper results/CPU/index_build_breakdown.{pdf,png} — the PiPNN II
+     CPU build breakdown (per-phase shares after quantization + fusion).
+     Used here in place of the blueprint's proposed 4-row trimmed table render: the encoding
+     share is visible in the figure, and no encoding-cost NUMBER is asserted anywhere in this
+     deck (it is not paper-derived and not banked). -->
+<img data-src="assets/figures/CPU/index_build_breakdown.png" class="quarto-figure quarto-figure-center r-stretch" style="width:72.0%"><aside class="notes">
+<p>The slide for “what does encoding cost?” — point at the encode share rather than quoting a number: encoding is data-oblivious, runs once per build, and is a small slice of the bar. If pressed for a figure, say it is small and offer to follow up; presenter knowledge, not a paper number.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="backup-assignleaders-top-f-against-a-small-leader-set" class="slide level2">
+<h2>Backup: AssignLeaders — top-<em>f</em> against a small leader set</h2>
+<ul>
+<li>Partitioning’s kernel is <strong>asymmetric</strong>: every point scores against a <em>small</em> leader set — so pretranspose the leaders <strong>once</strong> and stream cache-sized chunks of points through. <!-- P54 --></li>
+<li>The fanout schedule sets <span class="math inline">k</span>: <strong>top-10</strong> at the root, <strong>top-3</strong> below, <strong>top-1</strong> deeper. <!-- P54 --></li>
+<li><strong>Top-1</strong> is an in-register argmin sweep. <strong>Top-3 / top-10</strong> use <em>displacement sort</em>: each SIMD lane tracks its own top-<span class="math inline">k</span> in <span class="math inline">k</span> registers, and the horizontal merge is deferred to the very end. <!-- P54 --></li>
+<li><span class="math inline">k = 3</span> stays entirely in registers; <span class="math inline">k = 10</span> spills to L1 — affordable, because only the root scores each point once while lower levels score every replica. <!-- P54 --></li>
+</ul>
+</section>
+<section id="backup-the-leaf-kernel-a-fused-self-join" class="slide level2">
+<h2>Backup: the leaf kernel — a fused self-join</h2>
+<ul>
+<li>Inside a leaf every point is both query and database — so score only the <strong>lower triangle</strong>: half the distance work. <!-- P55 --></li>
+<li>Each score updates <strong>two top-2 trackers at once</strong>: the query row’s (in registers) and the database point’s (loaded once per panel, updated in-register, stored back). <!-- P55 --></li>
+<li>Lane-parallel top-2 insertion runs in <strong>6 blends</strong>; masking retires self-pairs and padding. <!-- P55 --></li>
+<li>The output is <strong>leaf-2NN</strong>: each member’s two nearest co-members, symmetrized into the candidate stream HashPrune absorbs. <!-- P55 --></li>
+</ul>
+</section>
+<section id="backup-the-kernel-ablation-stage-by-stage" class="slide level2">
+<h2>Backup: the kernel ablation, stage by stage</h2>
+<p>The fused, quantized leaf-2-NN kernel takes leaf scoring from <strong>12.90 ms to 1.04 ms — 12.4×</strong>. <!-- P15 --></p>
+
+<!-- Figure source: qpipnn_paper results/CPU/leaftop2_ablations/leaftop2_ablation.pdf.
+     Claim: P15. Per-bar GMAC/s values are PROVISIONAL (claim bank, provisional table) —
+     speaker notes only, never slide text. -->
+<img data-src="assets/figures/CPU/leaftop2_ablation.png" class="quarto-figure quarto-figure-center r-stretch" style="width:62.0%"><aside class="notes">
+<p>Benchmark: one leaf of 800 points from a 1M x 768-d dataset, single Icelake core. Bars are cumulative stages; colors are Prepare / GEMM / Filtering. The order of the story: swapping fp32 GEMM for vpdpbusd on int8 codes is the first factor; the 16-point panel layout alone REGRESSES until query unrolling gives it independent accumulator chains; panel unrolling amortizes each broadcast across four panels; the lower triangle halves the GEMM and makes filtering the bottleneck at over half the runtime; vectorizing the database-side top-2 update with branchless compare-and-blend is the largest single jump and pushes filtering back to about a tenth. All per-stage throughput numbers are provisional — do not put them on a slide.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="backup-the-v1-leaf-kernel-eigen-highway" class="slide level2">
+<h2>Backup: the v1 leaf kernel (Eigen + Highway)</h2>
+<div class="pseudocode">
+<p><span class="fn">LeafKNN</span>(leaf b, k):&nbsp;&nbsp;<span class="cm">▸ PiPNN I (v1) leaf kernel</span><br> &nbsp;&nbsp;D ← all-pairs distances in b&nbsp;&nbsp;<span class="cm">▸ Eigen symmetric GEMM: P·Pᵀ + norms</span><br> &nbsp;&nbsp;<span class="kw">for</span> point i ∈ b:<br> &nbsp;&nbsp;&nbsp;&nbsp;pack (D[i,j], j) into 64-bit keys<br> &nbsp;&nbsp;&nbsp;&nbsp;k nearest ← <span class="fn">VQPartialSort</span>(keys, k)&nbsp;&nbsp;<span class="cm">▸ Highway SIMD</span><br> &nbsp;&nbsp;<span class="kw">return</span> bi-directed edges E<sub>b</sub></p>
+</div>
+<ul>
+<li>Per-row top-k by <strong>vectorized partial sort</strong> — distance and index bit-packed into one 64-bit key. <!-- P46 --></li>
+<li>This is exactly the kernel the fused self-join replaces — and the reason the distance matrix used to exist. <!-- P55 --></li>
+</ul>
+<!-- Pseudocode: P46 (PipNN main branch: pipnn.h:439-466; pipnn_utils.h:266-303, 438-478). -->
+</section>
+<section id="backup-pipnn-is-leaf-kernel-ablation-eigen-highway" class="slide level2">
+<h2>Backup: PiPNN I’s leaf-kernel ablation (Eigen + Highway)</h2>
+
+<img data-src="assets/figures/build_leaf_time_comparison.png" class="quarto-figure quarto-figure-center r-stretch" style="width:60.0%"><div class="axis-hint" style="left: 20%; top: 40%;">
+<svg viewbox="0 0 44 110" width="34" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+<path d="M 22 10 C 27 38, 17 64, 22 96" fill="none" stroke="#e21833" stroke-width="3.5" stroke-linecap="round"></path><path d="M 12 83 L 22 98 L 32 81" fill="none" stroke="#e21833" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+<span class="axis-hint-label">Lower is<br>better</span>
+</div>
+<div style="text-align: center;">
+<p><mark><strong>Implementation of top-k kernels has highest impact on running time</strong></mark> <!-- P73 --></p>
+</div>
+<!-- Demoted to backup in v3.2-VecDB (the main line shows this paper's stage ablation instead).
+     The first paper's leaf-optimization ablation, as on talk.qmd v11's
+     "The leaf kernel implementation matters" slide (arXiv full version 10_Appendix.tex
+     fig:leaf_optimization; figures/build_leaf_time_comparison.pdf). Bars: naive vs (D)
+     precomputed distance matrix, (E) Eigen GEMM, (VQ) Highway vectorized partial sort,
+     normalized to the fastest; lower is better. Mark = Tobias's v11 wording. Claim P73.
+     .axis-hint: first occurrence of the slowdown-bar plot type. -->
+<aside class="notes">
+<p>Backup. PiPNN I’s own ablation: the same leaf algorithm, implemented naively, is up to about 60 times slower than the optimized kernel — the tall bars are the naive k-NN and all-to-all-prune leaf kernels; precomputing the distance matrix, computing it as one GEMM, and selecting with a vectorized partial sort each remove a large factor. That is already true at fp32 with a materialized distance matrix. So the question this paper asks is algorithmic, not micro-architectural: what is the right way to compute a batched top-k? Two answers, next slide: make each score cheap, and never materialize the scores at all.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="backup-why-pipnn-doesnt-just-port-to-the-gpu" class="slide level2">
+<h2>Backup: why PiPNN doesn’t just port to the GPU</h2>
+<ol type="1">
+<li><strong>Recursive partitioning</strong> — a dynamic tree of dependent launches instead of flat bulk passes. <!-- P35 --></li>
+<li><strong>Skewed bucket sizes</strong> — a launch finishes when its <em>slowest</em> block does: oversized leaves stall the grid while near-empty ones idle SMs. <!-- P35 --></li>
+<li><strong>Lock-based HashPrune</strong> — thousands of concurrent inserts contending on per-point reservoirs serialize on locks. <!-- P35 --></li>
+</ol>
+<div style="text-align: center; margin-top: 0.8em;">
+<p><mark><strong>Fixes: flatten · regularize · segment · sort-and-merge.</strong></mark> <!-- P17 --></p>
+</div>
+<!-- Demoted from the main line in v3-VecDB (2026-09-02): the GPiPNN overview slide states
+     the three mismatches in one bullet; this is the Q&A version with each obstacle's
+     "why bad" clause. DirectEdgePrune — the quieter fifth fix — has its own backup slide. -->
+</section>
+<section id="backup-flatten-recursion-becomes-two-sorted-rounds" class="slide level2">
+<h2>Backup: flatten — recursion becomes two sorted rounds</h2>
+<p>Sample leaders, assign each point to its <span class="math inline">f</span> nearest, <strong>radix-sort by leader key</strong> — every bucket becomes a contiguous run. <strong>Two rounds suffice</strong> (<span class="math inline">f_0 = 8</span>, then <span class="math inline">f_1 = 4</span>). <!-- P58 --></p>
+<!-- Demoted from the main line in the 2026-09-02 higher-abstraction restructure (the
+     main line keeps one "Make the work uniform" slide); static inline SVG — a
+     data-layout statement, not a temporal one. Replaces the older text-only flatten
+     backup. Claim: P58. -->
+<svg viewbox="0 0 900 250" style="width: 70%; display: block; margin: 0.7em auto 0;" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Two assign-and-sort rounds: mixed leader keys are radix-sorted into contiguous runs">
+<text x="0" y="42" font-size="20" fill="#6f6a62" font-style="italic">Round 1</text> <text x="0" y="66" font-size="19" fill="#1c1814">f₀ = 8</text> <rect x="120" y="20" width="26" height="26" fill="#e21833" fill-opacity="0.7"></rect> <rect x="150" y="20" width="26" height="26" fill="#2563eb" fill-opacity="0.7"></rect> <rect x="180" y="20" width="26" height="26" fill="#15803d" fill-opacity="0.7"></rect> <rect x="210" y="20" width="26" height="26" fill="#e21833" fill-opacity="0.7"></rect> <rect x="240" y="20" width="26" height="26" fill="#15803d" fill-opacity="0.7"></rect> <rect x="270" y="20" width="26" height="26" fill="#2563eb" fill-opacity="0.7"></rect> <rect x="300" y="20" width="26" height="26" fill="#2563eb" fill-opacity="0.7"></rect> <rect x="330" y="20" width="26" height="26" fill="#e21833" fill-opacity="0.7"></rect> <rect x="360" y="20" width="26" height="26" fill="#15803d" fill-opacity="0.7"></rect> <text x="120" y="68" font-size="17" fill="#6f6a62">points, tagged with leader keys</text> <path d="M 410 33 L 520 33" stroke="#e21833" stroke-width="2.5" marker-end="url(#vecarr)"></path> <text x="412" y="22" font-size="16" fill="#e21833" font-style="italic">radix sort</text> <rect x="540" y="20" width="26" height="26" fill="#e21833" fill-opacity="0.7"></rect> <rect x="570" y="20" width="26" height="26" fill="#e21833" fill-opacity="0.7"></rect> <rect x="600" y="20" width="26" height="26" fill="#e21833" fill-opacity="0.7"></rect> <rect x="636" y="20" width="26" height="26" fill="#2563eb" fill-opacity="0.7"></rect> <rect x="666" y="20" width="26" height="26" fill="#2563eb" fill-opacity="0.7"></rect> <rect x="696" y="20" width="26" height="26" fill="#2563eb" fill-opacity="0.7"></rect> <rect x="732" y="20" width="26" height="26" fill="#15803d" fill-opacity="0.7"></rect> <rect x="762" y="20" width="26" height="26" fill="#15803d" fill-opacity="0.7"></rect> <rect x="792" y="20" width="26" height="26" fill="#15803d" fill-opacity="0.7"></rect> <text x="540" y="68" font-size="17" fill="#6f6a62">contiguous runs = buckets</text> <line x1="0" y1="105" x2="900" y2="105" stroke="#ddd6c8" stroke-width="1.5"></line> <text x="0" y="152" font-size="20" fill="#6f6a62" font-style="italic">Round 2</text> <text x="0" y="176" font-size="19" fill="#1c1814">f₁ = 4</text> <rect x="120" y="130" width="26" height="26" fill="#15803d" fill-opacity="0.7"></rect> <rect x="150" y="130" width="26" height="26" fill="#b45309" fill-opacity="0.7"></rect> <rect x="180" y="130" width="26" height="26" fill="#2563eb" fill-opacity="0.7"></rect> <rect x="210" y="130" width="26" height="26" fill="#b45309" fill-opacity="0.7"></rect> <rect x="240" y="130" width="26" height="26" fill="#15803d" fill-opacity="0.7"></rect> <rect x="270" y="130" width="26" height="26" fill="#2563eb" fill-opacity="0.7"></rect> <rect x="300" y="130" width="26" height="26" fill="#b45309" fill-opacity="0.7"></rect> <rect x="330" y="130" width="26" height="26" fill="#2563eb" fill-opacity="0.7"></rect> <rect x="360" y="130" width="26" height="26" fill="#15803d" fill-opacity="0.7"></rect> <text x="120" y="178" font-size="17" fill="#6f6a62">re-assign inside each bucket</text> <path d="M 410 143 L 520 143" stroke="#e21833" stroke-width="2.5" marker-end="url(#vecarr)"></path> <text x="412" y="132" font-size="16" fill="#e21833" font-style="italic">radix sort</text> <rect x="540" y="130" width="26" height="26" fill="#2563eb" fill-opacity="0.7"></rect> <rect x="570" y="130" width="26" height="26" fill="#2563eb" fill-opacity="0.7"></rect> <rect x="600" y="130" width="26" height="26" fill="#2563eb" fill-opacity="0.7"></rect> <rect x="636" y="130" width="26" height="26" fill="#15803d" fill-opacity="0.7"></rect> <rect x="666" y="130" width="26" height="26" fill="#15803d" fill-opacity="0.7"></rect> <rect x="696" y="130" width="26" height="26" fill="#15803d" fill-opacity="0.7"></rect> <rect x="732" y="130" width="26" height="26" fill="#b45309" fill-opacity="0.7"></rect> <rect x="762" y="130" width="26" height="26" fill="#b45309" fill-opacity="0.7"></rect> <rect x="792" y="130" width="26" height="26" fill="#b45309" fill-opacity="0.7"></rect> <text x="540" y="178" font-size="17" fill="#6f6a62">leaves, as contiguous segments</text> <text x="120" y="222" font-size="18" fill="#1c1814" font-style="italic">no recursion, no dependent launches — one device-wide sort per round</text> <defs><marker id="vecarr" markerwidth="9" markerheight="9" refx="7" refy="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="#e21833"></path></marker></defs>
+</svg>
+<aside class="notes">
+<p>The Q&amp;A slide for how the recursion disappears. One point: the recursion tree becomes flat bulk work. Sample leaders, assign every point to its f nearest, radix-sort by the induced leader key so each bucket is a contiguous run — read the picture left to right, twice. Two rounds suffice, fanout 8 then 4, giving up to 32 leaf memberships, about 30 in practice. The price is one device-wide sort per round: bulk, regular work the GPU is happy to do.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="backup-regularize-bucket-sizes" class="slide level2">
+<h2>Backup: regularize bucket sizes</h2>
+<ul>
+<li>After sorting, <strong>run-length-encode</strong> the bucket sizes, then <strong>split the oversized and merge the undersized</strong> toward a target of ≈ 1024 points. <!-- P59 --></li>
+<li>What it buys: every leaf now fits <strong>one fixed tile shape</strong> — a single kernel serves all of them, with no per-size specialization and no relaunches. <!-- P59 --></li>
+<li>The slowest-block problem dissolves: uniform buckets mean no straggler stalls the grid. <!-- P35, P59 --></li>
+</ul>
+<video class="seamless" src="assets/videos/gpu_regularize_skew.mp4" autoplay="" muted="" playsinline="" preload="auto" style="width: 42%; display: block; margin: 0.4em auto 0;">
+</video>
+<!-- The problem-only clip (gpu_regularize_skew.mp4, 6.48s): every bar fills at the same
+     shared rate, the size-13 straggler alone reaches the red launch-end line, idle bands
+     appear over the finished bars. Moved here from the main line in the
+     one-point-per-slide restructure (2026-09-01); the main line's regularize slide shows
+     only the fix, which opens frozen on this clip's final frame. -->
+</section>
+<section id="backup-one-fused-segmented-top-k-kernel" class="slide level2">
+<h2>Backup: one fused, segmented top-k kernel</h2>
+<ul>
+<li>Every leaf is a <strong>segment</strong> of the same launch — one kernel scores them all. <!-- P60 --></li>
+<li>Inside: <strong>producer warps</strong> TMA-stage the next 32-byte stripe into shared memory while <strong>WGMMA consumes the current one</strong> — the copy hides under the math, one matmul group always in flight. <!-- P60 --></li>
+<li>Scores drain from accumulators <strong>straight into register top-k</strong>, merged at the end (butterfly): the score matrix never exists in global memory. <!-- P60 --></li>
+</ul>
+<svg viewbox="0 0 900 190" style="width: 46%; display: block; margin: 0.5em auto 0;" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Eight uniform segments served by one kernel launch">
+<path d="M 57 66 L 57 52 L 843 52 L 843 66" fill="none" stroke="#d97706" stroke-width="3" stroke-linecap="round"></path> <text x="450" y="34" font-size="21" fill="#d97706" font-style="italic" text-anchor="middle">one fused kernel launch</text> <rect x="57" y="82" width="86" height="46" fill="#15803d" fill-opacity="0.55" stroke="#15803d" stroke-width="2"></rect> <rect x="157" y="82" width="86" height="46" fill="#15803d" fill-opacity="0.55" stroke="#15803d" stroke-width="2"></rect> <rect x="257" y="82" width="86" height="46" fill="#15803d" fill-opacity="0.55" stroke="#15803d" stroke-width="2"></rect> <rect x="357" y="82" width="86" height="46" fill="#15803d" fill-opacity="0.55" stroke="#15803d" stroke-width="2"></rect> <rect x="457" y="82" width="86" height="46" fill="#15803d" fill-opacity="0.55" stroke="#15803d" stroke-width="2"></rect> <rect x="557" y="82" width="86" height="46" fill="#15803d" fill-opacity="0.55" stroke="#15803d" stroke-width="2"></rect> <rect x="657" y="82" width="86" height="46" fill="#15803d" fill-opacity="0.55" stroke="#15803d" stroke-width="2"></rect> <rect x="757" y="82" width="86" height="46" fill="#15803d" fill-opacity="0.55" stroke="#15803d" stroke-width="2"></rect> <text x="450" y="164" font-size="19" fill="#6f6a62" text-anchor="middle">every leaf = one segment of the same grid — no per-size kernels, no relaunches</text>
+</svg>
+<p><span class="muted">The CPU fusion, at warpgroup scale.</span></p>
+<!-- SVG moved here from the main line's segment slide in the 2026-09-02
+     higher-abstraction restructure (the main line keeps one "Make the work uniform"
+     slide). -->
+</section>
+<section id="backup-sort-and-merge-hashprune-step-by-step" class="slide level2">
+<h2>Backup: sort-and-merge HashPrune, step by step</h2>
+<ul>
+<li>Thousands of concurrent inserts on per-point reservoirs would serialize on locks — so <strong>emit now, resolve later</strong>: write two direction-records per candidate edge into a buffer. <!-- P35, P61 --></li>
+<li><strong>Radix-sort</strong> the batch by owner and distance, then realize every reservoir in one sequential <strong>merge sweep</strong>. <!-- P61 --></li>
+<li>The license is the theorem: HashPrune is order-free, so a sorted batch and a stream of locked inserts land on the <strong>same final reservoir</strong>. <!-- P8, P61 --></li>
+</ul>
+<video class="seamless" src="assets/videos/record_sortmerge.mp4" autoplay="" muted="" playsinline="" preload="auto" style="width: 44%; display: block; margin: 0.3em auto 0;">
+</video>
+<!-- Clip: record_sortmerge.mp4 (~6s, animations/record_sort.py RecordSortMerge) — records
+     arrive in arbitrary order, radix-sort into per-owner ascending runs, one sweep keeps
+     ranks 1-2 into the green slots and flushes 3-4 red. Moved here from the main line's
+     "Sort, don't lock" slide in v3-VecDB (2026-09-02); the main line keeps the
+     record_same payoff clip. -->
+<aside class="notes">
+<p>Ammo for the two questions this always draws. Memory: the per-batch record slab is capped at about 6 GB in the paper’s runs, so large builds are processed in batches — the cap is a memory-budget knob, not a correctness one. Cost: the sort plus merge is the epilogue of each round and is bulk-parallel; it is not the bottleneck of the build, which stays in the segmented scoring kernel.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="backup-any-order-same-reservoir" class="slide level2">
+<h2>Backup: any order, same reservoir</h2>
+<p>Legal <em>because</em> HashPrune is <strong>history-independent</strong>: the sorted batch lands on the <strong>same final reservoir</strong> as a stream of locked inserts. <!-- P8, P61 --></p>
+<video class="seamless" src="assets/videos/record_same.mp4" autoplay="" muted="" playsinline="" preload="auto" style="width: 54%; display: block; margin: 0.5em auto 0;">
+</video>
+<!-- Demoted from the main line in v3.1-VecDB (2026-09-02). Clip: record_same.mp4 (5.15s,
+     animations/record_sort.py RecordSame) — the same twelve records in two visibly
+     different arrival orders collapse through the pipeline onto two identical reservoir
+     strips; green box + "=" is hashprune_invariance.py's visual language. Claims: P8, P61. -->
+<aside class="notes">
+<p>The payoff of the theorem, for Q&amp;A: two rows, the same twelve records in two arrival orders, both collapse to the identical reservoir. That is why the GPU build is bit-identical to the locked CPU build.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="backup-directedgeprune-prune-only-what-was-witnessed" class="slide level2">
+<h2>Backup: DirectEdgePrune — prune only what was witnessed</h2>
+<ul>
+<li>One search-shaped pass remains: the final RobustPrune wants <strong>candidate-to-candidate</strong> distances the build never computed — recomputing them is a scatter-gather pass. <!-- P62 --></li>
+<li>The fix: prune using <strong>already-witnessed distances only</strong>. The error is one-sided — it can only <em>miss</em> prunes, never over-prune. <!-- P62 --></li>
+<li>The trade: graphs come out <strong>30–58% denser</strong> at comparable query quality, and GPU build time drops by up to <strong>1.4×</strong>. <!-- P62 --></li>
+</ul>
+</section>
+<section id="backup-gpu-direct-k-nn-graphs" class="slide level2">
+<h2>Backup: GPU direct k-NN graphs</h2>
+<p>Geomean speedups: <strong>7.12× over Jasper</strong>, <strong>2.91× over NN-Descent</strong>, <strong>9.84× over CAGRA</strong>, <strong>49.80× over IVF-PQ8</strong>. <!-- P23 --></p>
+
+<!-- Figure source: qpipnn_paper results/GPU/knn_build_bars.png. Claim: P23.
+     The published GPU k-NN configuration is RSQ8: TQ4 misses the 0.9 recall floor on five
+     of these datasets (P88) — say that before anyone asks why TQ4 is absent here. -->
+<img data-src="assets/figures/GPU/knn_build_bars.png" class="quarto-figure quarto-figure-center r-stretch" style="width:66.0%"></section>
+<section id="backup-direct-mode-visually" class="slide level2">
+<h2>Backup: direct mode, visually</h2>
+<p>Drop HashPrune and the final prune: the leaves already witnessed the neighbors, so k-NN rows fill straight from the leaf candidates — no reservoirs, no navigable index, no query pass. <!-- P10 pipeline minus the prunes; P20-P22 context. --></p>
+<video class="seamless" src="assets/videos/direct_knn_graph.mp4" autoplay="" loop="" muted="" playsinline="" preload="auto" style="width: 68%;">
+</video>
+<!-- Animation: animations/direct_knn_graph.py (schematic). -->
+</section>
+<section id="backup-full-build-tables" class="slide level2">
+<h2>Backup: full build tables</h2>
+<div class="columns">
+<div class="column" style="width:50%;">
+<p><img data-src="assets/figures/tables/ann_build_full.png" style="width:100.0%"></p>
+</div><div class="column" style="width:50%;">
+<p><img data-src="assets/figures/tables/knn_build_full.png" style="width:100.0%"></p>
+</div></div>
+<!-- Table sources: qpipnn_paper tables/ann_build_full.tex, tables/knn_build_full.tex
+     (rendered via scripts/tables/). -->
+</section>
+<section id="backup-evaluation-scope" class="slide level2">
+<h2>Backup: evaluation scope</h2>
+<ul>
+<li><strong>Twelve datasets</strong> across text, image and text-to-image modalities; up to <strong>one billion</strong> points on CPU and <strong>one hundred million</strong> on GPU. <!-- P24 --></li>
+<li><strong>Machines</strong> — CPU: GCP c4-highmem-288 (288 vCPU, 2.2 TB, Granite Rapids) for billion-scale, c3-highmem-192 (192 vCPU, 1.5 TB, Sapphire Rapids) otherwise; GPU: a3-highgpu-1g, one NVIDIA H100 80 GB SXM5. <!-- P33 --></li>
+<li><strong>Baselines</strong> — CPU: Vamana/ParlayANN (FP32), SQ8-quantized Vamana, PyNNDescent (SQ8, k-NN only); GPU: CAGRA (incl.&nbsp;FP16/PQ variants), Jasper, cuVS NN-Descent, cuVS IVF-PQ8. <!-- P34 --></li>
+<li>GPU baseline runs are capped <strong>below full scale</strong> on most datasets (10M slices; 1M for MS-Arctic) because the baselines do not complete at full scale on one 80 GB H100. <!-- P84 --></li>
+</ul>
+</section>
+<section id="backup-multi-level-fanout-beats-replication" class="slide level2">
+<h2>Backup: multi-level fanout beats replication</h2>
+<div class="columns">
+<div class="column" style="width:50%;">
+<p><img data-src="assets/figures/build_time_fanout_openai.png" style="width:100.0%"></p>
+</div><div class="column" style="width:50%;">
+<p><img data-src="assets/figures/qps_fanout_openai.png" style="width:100.0%"></p>
+</div></div>
+<p>Multi-level fanout builds <strong>1.35–2.5× faster than replication</strong> at the same quality. <!-- P28 --></p>
+<!-- Figure sources: OpenAI panels cropped (scripts/crop_panels.py) from
+     pipnn_kdd_camera_ready figures/build_time_4panel_barplot.pdf and qps_4panel_barplot.pdf
+     — these are the FANOUT/REPLICATION ABLATION, not baseline comparisons. -->
+<aside class="notes">
+<p>Where the end-to-end number comes from: multi-level fanout makes the partitioning STEP about 3.35x faster on average (single-level fanout alone 1.47x), and partitioning is a large enough share of the build to turn that into the 1.35-2.5x end-to-end speedup (P70).</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section id="backup-dense-ball-carving-works-best" class="slide level2">
+<h2>Backup: dense ball carving works best</h2>
+<p>Partitioning strategies compared, rest of the pipeline fixed — <strong>dense (k-)ball carving wins</strong>:</p>
+
+<!-- Figure source: BigANN-100M panel cropped (scripts/crop_panels.py) from
+     pipnn_kdd_camera_ready figures/partitioning_methods_2x2.png (ball carving vs k-means vs
+     LSH vs binary partitioning). Qualitative claim only. -->
+<img data-src="assets/figures/partitioning_bigann.png" class="quarto-figure quarto-figure-center r-stretch" style="width:52.0%"></section>
+<section id="backup-picking-from-the-leaves" class="slide level2">
+<h2>Backup: picking from the leaves</h2>
+<div class="columns">
+<div class="column" style="width:46%;">
+<div style="margin-top: 3.2em;">
+<p><img data-src="assets/figures/tables/degtab.png" style="width:100.0%"></p>
+</div>
+</div><div class="column" style="width:54%;">
+<p><img data-src="assets/figures/leaf_method_openai.png" style="width:94.0%"></p>
+</div></div>
+<div style="text-align: center;">
+<p><mark><strong>Bi-directed k-NN and MST both work.</strong></mark> <!-- P71 --></p>
+</div>
+<!-- Left: average-degree table (arXiv full version 10_Appendix.tex tab:degtab, rendered via
+     scripts/tables/degtab.tex). Right: OpenAI panel of fig:leaf_qps. Claim P71.
+     RobustPrune-in-the-leaf yields near-max-degree graphs (avg 55.45 vs cap 64) that later
+     prunes cannot sparsify. -->
+</section>
+<section id="backup-k-nn-degree-in-the-leaves" class="slide level2">
+<h2>Backup: k-NN degree in the leaves</h2>
+<p>Denser k-NN graph in the leaves → denser PiPNN index. <strong>Sweet spot for quality is between 2 and 4.</strong> <!-- P72 --></p>
+
+<!-- Figure source: arXiv full version 10_Appendix.tex fig:knn_parameter
+     (figures/knn_space.png — MS-SPACEV, k swept 1..10). Claim P72. -->
+<img data-src="assets/figures/knn_space.png" class="quarto-figure quarto-figure-center r-stretch" style="width:72.0%"></section>
+<section id="backup-symphonyqg-faster-queries-same-builds" class="slide level2">
+<h2>Backup: SymphonyQG — faster queries, same builds</h2>
+<ul>
+<li>Fuses <strong>RaBitQ-style quantization into the graph layout</strong> (NGT-QG lineage): batch SIMD distance estimation during traversal, no re-ranking pass. <!-- P42 --></li>
+<li>State of the art on the <strong>query-time</strong> time–accuracy trade-off. <!-- P42 --></li>
+<li>It does <strong>not</strong> address construction cost — the axis this talk is about. <!-- P42 --></li>
+</ul>
+<!-- P42 is qualitative by design: neither PiPNN paper discusses SymphonyQG (dangling
+     citation only). Keep slide text qualitative and attach no numbers. -->
+
+</section></section>
+    </div>
+  <div class="quarto-auto-generated-content" style="display: none;">
+<div class="footer footer-default">
+<p>PiPNN · VecDB @ VLDB 2026</p>
+</div>
+</div></div>
+
+  <script>window.backupDefine = window.define; window.define = undefined;</script>
+  <script src="talk_vecdb_files/libs/revealjs/dist/reveal.js"></script>
+  <!-- reveal.js plugins -->
+  <script src="talk_vecdb_files/libs/revealjs/plugin/quarto-line-highlight/line-highlight.js"></script>
+  <script src="talk_vecdb_files/libs/revealjs/plugin/pdf-export/pdfexport.js"></script>
+  <script src="talk_vecdb_files/libs/revealjs/plugin/reveal-menu/menu.js"></script>
+  <script src="talk_vecdb_files/libs/revealjs/plugin/reveal-menu/quarto-menu.js"></script>
+  <script src="talk_vecdb_files/libs/revealjs/plugin/quarto-support/support.js"></script>
+  
+
+  <script src="talk_vecdb_files/libs/revealjs/plugin/notes/notes.js"></script>
+  <script src="talk_vecdb_files/libs/revealjs/plugin/search/search.js"></script>
+  <script src="talk_vecdb_files/libs/revealjs/plugin/zoom/zoom.js"></script>
+  <script>window.define = window.backupDefine; window.backupDefine = undefined;</script>
+
+  <script>
+
+      // Full list of configuration options available at:
+      // https://revealjs.com/config/
+      Reveal.initialize({
+'controlsAuto': false,
+'previewLinksAuto': true,
+'pdfSeparateFragments': false,
+'autoAnimateEasing': "ease",
+'autoAnimateDuration': 1,
+'autoAnimateUnmatched': true,
+'jumpToSlide': true,
+'menu': {"side":"left","useTextContentForMissingTitles":true,"markers":false,"loadIcons":false,"custom":[{"title":"Tools","icon":"<i class=\"fas fa-gear\"></i>","content":"<ul class=\"slide-menu-items\">\n<li class=\"slide-tool-item active\" data-item=\"0\"><a href=\"#\" onclick=\"RevealMenuToolHandlers.fullscreen(event)\"><kbd>f</kbd> Fullscreen</a></li>\n<li class=\"slide-tool-item\" data-item=\"1\"><a href=\"#\" onclick=\"RevealMenuToolHandlers.speakerMode(event)\"><kbd>s</kbd> Speaker View</a></li>\n<li class=\"slide-tool-item\" data-item=\"2\"><a href=\"#\" onclick=\"RevealMenuToolHandlers.overview(event)\"><kbd>o</kbd> Slide Overview</a></li>\n<li class=\"slide-tool-item\" data-item=\"3\"><a href=\"#\" onclick=\"RevealMenuToolHandlers.togglePdfExport(event)\"><kbd>e</kbd> PDF Export Mode</a></li>\n<li class=\"slide-tool-item\" data-item=\"4\"><a href=\"#\" onclick=\"RevealMenuToolHandlers.toggleScrollView(event)\"><kbd>r</kbd> Scroll View Mode</a></li>\n<li class=\"slide-tool-item\" data-item=\"5\"><a href=\"#\" onclick=\"RevealMenuToolHandlers.keyboardHelp(event)\"><kbd>?</kbd> Keyboard Help</a></li>\n</ul>"}],"openButton":true},
+'smaller': false,
+ 
+        // Display controls in the bottom right corner
+        controls: true,
+
+        // Help the user learn the controls by providing hints, for example by
+        // bouncing the down arrow when they first encounter a vertical slide
+        controlsTutorial: false,
+
+        // Determines where controls appear, "edges" or "bottom-right"
+        controlsLayout: 'edges',
+
+        // Visibility rule for backwards navigation arrows; "faded", "hidden"
+        // or "visible"
+        controlsBackArrows: 'faded',
+
+        // Display a presentation progress bar
+        progress: true,
+
+        // Display the page number of the current slide
+        slideNumber: 'c/t',
+
+        // 'all', 'print', or 'speaker'
+        showSlideNumber: 'all',
+
+        // Add the current slide number to the URL hash so that reloading the
+        // page/copying the URL will return you to the same slide
+        hash: true,
+
+        // Start with 1 for the hash rather than 0
+        hashOneBasedIndex: false,
+
+        // Flags if we should monitor the hash and change slides accordingly
+        respondToHashChanges: true,
+
+        // Push each slide change to the browser history
+        history: true,
+
+        // Enable keyboard shortcuts for navigation
+        keyboard: true,
+
+        // Enable the slide overview mode
+        overview: true,
+
+        // Disables the default reveal.js slide layout (scaling and centering)
+        // so that you can use custom CSS layout
+        disableLayout: false,
+
+        // Vertical centering of slides
+        center: false,
+
+        // Enables touch navigation on devices with touch input
+        touch: true,
+
+        // Loop the presentation
+        loop: false,
+
+        // Change the presentation direction to be RTL
+        rtl: false,
+
+        // see https://revealjs.com/vertical-slides/#navigation-mode
+        navigationMode: 'linear',
+
+        // Randomizes the order of slides each time the presentation loads
+        shuffle: false,
+
+        // Turns fragments on and off globally
+        fragments: true,
+
+        // Flags whether to include the current fragment in the URL,
+        // so that reloading brings you to the same fragment position
+        fragmentInURL: false,
+
+        // Flags if the presentation is running in an embedded mode,
+        // i.e. contained within a limited portion of the screen
+        embedded: false,
+
+        // Flags if we should show a help overlay when the questionmark
+        // key is pressed
+        help: true,
+
+        // Flags if it should be possible to pause the presentation (blackout)
+        pause: true,
+
+        // Flags if speaker notes should be visible to all viewers
+        showNotes: false,
+
+        // Global override for autoplaying embedded media (null/true/false)
+        autoPlayMedia: true,
+
+        // Global override for preloading lazy-loaded iframes (null/true/false)
+        preloadIframes: null,
+
+        // Number of milliseconds between automatically proceeding to the
+        // next slide, disabled when set to 0, this value can be overwritten
+        // by using a data-autoslide attribute on your slides
+        autoSlide: 0,
+
+        // Stop auto-sliding after user input
+        autoSlideStoppable: true,
+
+        // Use this method for navigation when auto-sliding
+        autoSlideMethod: null,
+
+        // Specify the average time in seconds that you think you will spend
+        // presenting each slide. This is used to show a pacing timer in the
+        // speaker view
+        defaultTiming: null,
+
+        // Enable slide navigation via mouse wheel
+        mouseWheel: false,
+
+        // The display mode that will be used to show slides
+        display: 'block',
+
+        // Hide cursor if inactive
+        hideInactiveCursor: true,
+
+        // Time before the cursor is hidden (in ms)
+        hideCursorTime: 5000,
+
+        // Opens links in an iframe preview overlay
+        previewLinks: false,
+
+        // Transition style (none/fade/slide/convex/concave/zoom)
+        transition: 'fade',
+
+        // Transition speed (default/fast/slow)
+        transitionSpeed: 'default',
+
+        // Transition style for full page slide backgrounds
+        // (none/fade/slide/convex/concave/zoom)
+        backgroundTransition: 'fade',
+
+        // Number of slides away from the current that are visible
+        viewDistance: 3,
+
+        // Number of slides away from the current that are visible on mobile
+        // devices. It is advisable to set this to a lower number than
+        // viewDistance in order to save resources.
+        mobileViewDistance: 2,
+
+        // The "normal" size of the presentation, aspect ratio will be preserved
+        // when the presentation is scaled to fit different resolutions. Can be
+        // specified using percentage units.
+        width: 1600,
+
+        height: 900,
+
+        // Factor of the display size that should remain empty around the content
+        margin: 7.0e-2,
+
+        // reveal.js plugins
+        plugins: [QuartoLineHighlight, PdfExport, RevealMenu, QuartoSupport,
+
+          RevealNotes,
+          RevealSearch,
+          RevealZoom
+        ]
+      });
+    </script>
+    <script>
+      // Reveal pauses <video> elements when a slide is hidden and does not resume
+      // them on revisit, so looped animations froze the second time a slide was
+      // shown. Restart every video on the slide being shown (ready + slidechanged).
+      (function () {
+        function restartVideos(slide) {
+          if (!slide) return;
+          slide.querySelectorAll("video").forEach(function (v) {
+            try { v.currentTime = 0; } catch (e) { /* not seekable yet */ }
+            var p = v.play();
+            if (p && p.catch) p.catch(function () { /* autoplay blocked; ignore */ });
+          });
+        }
+        function hook() {
+          if (!window.Reveal || !window.Reveal.on) { setTimeout(hook, 50); return; }
+          // r-stretch bug fix (2026-08-09): reveal sizes section > .r-stretch
+          // images during layout(); if a lazy-loaded image hasn't loaded yet
+          // (naturalWidth 0 — e.g. after JUMPING straight to a far slide, so no
+          // preload happened), the math yields NaN, the style restore leaves the
+          // probe value "height: 0px" behind, and no later layout runs — the
+          // figure renders as a collapsed strip. Sequential stepping never hits
+          // this (viewDistance preloads figures before arrival). Re-run
+          // Reveal.layout() once any slide image finishes loading.
+          var relayout;
+          function scheduleLayout() {
+            clearTimeout(relayout);
+            relayout = setTimeout(function () { window.Reveal.layout(); }, 60);
+          }
+          document.querySelectorAll(".reveal .slides img").forEach(function (im) {
+            im.addEventListener("load", scheduleLayout);
+          });
+          window.Reveal.on("ready", function (e) { restartVideos(e.currentSlide); });
+          window.Reveal.on("slidechanged", function (e) { restartVideos(e.currentSlide); });
+          // Stepped slides (pipeline walkthrough) put videos inside fragments;
+          // restart each clip the moment its fragment becomes visible.
+          window.Reveal.on("fragmentshown", function (e) {
+            (e.fragments || [e.fragment]).forEach(restartVideos);
+          });
+          window.Reveal.on("fragmenthidden", function (e) {
+            // Stepping backwards re-reveals the previous fade-in-then-out fragment.
+            var current = document.querySelectorAll(".reveal .fragment.current-fragment");
+            current.forEach(restartVideos);
+          });
+        }
+        hook();
+      })();
+    </script>
+    <script id="quarto-html-after-body" type="application/javascript">
+      window.document.addEventListener("DOMContentLoaded", function (event) {
+        const tabsets =  window.document.querySelectorAll(".panel-tabset-tabby")
+        tabsets.forEach(function(tabset) {
+          const tabby = new Tabby('#' + tabset.id);
+        });
+        const isCodeAnnotation = (el) => {
+          for (const clz of el.classList) {
+            if (clz.startsWith('code-annotation-')) {                     
+              return true;
+            }
+          }
+          return false;
+        }
+        const onCopySuccess = function(e) {
+          // button target
+          const button = e.trigger;
+          // don't keep focus
+          button.blur();
+          // flash "checked"
+          button.classList.add('code-copy-button-checked');
+          var currentTitle = button.getAttribute("title");
+          button.setAttribute("title", "Copied!");
+          let tooltip;
+          if (window.bootstrap) {
+            button.setAttribute("data-bs-toggle", "tooltip");
+            button.setAttribute("data-bs-placement", "left");
+            button.setAttribute("data-bs-title", "Copied!");
+            tooltip = new bootstrap.Tooltip(button, 
+              { trigger: "manual", 
+                customClass: "code-copy-button-tooltip",
+                offset: [0, -8]});
+            tooltip.show();    
+          }
+          setTimeout(function() {
+            if (tooltip) {
+              tooltip.hide();
+              button.removeAttribute("data-bs-title");
+              button.removeAttribute("data-bs-toggle");
+              button.removeAttribute("data-bs-placement");
+            }
+            button.setAttribute("title", currentTitle);
+            button.classList.remove('code-copy-button-checked');
+          }, 1000);
+          // clear code selection
+          e.clearSelection();
+        }
+        const getTextToCopy = function(trigger) {
+          const outerScaffold = trigger.parentElement.cloneNode(true);
+          const codeEl = outerScaffold.querySelector('code');
+          for (const childEl of codeEl.children) {
+            if (isCodeAnnotation(childEl)) {
+              childEl.remove();
+            }
+          }
+          return codeEl.innerText;
+        }
+        const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+          text: getTextToCopy
+        });
+        clipboard.on('success', onCopySuccess);
+        if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+          const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+            text: getTextToCopy,
+            container: window.document.getElementById('quarto-embedded-source-code-modal')
+          });
+          clipboardModal.on('success', onCopySuccess);
+        }
+          var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+          var mailtoRegex = new RegExp(/^mailto:/);
+            var filterRegex = new RegExp('/' + window.location.host + '/');
+          var isInternal = (href) => {
+              return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+          }
+          // Inspect non-navigation links and adorn them if external
+         var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+          for (var i=0; i<links.length; i++) {
+            const link = links[i];
+            if (!isInternal(link.href)) {
+              // undo the damage that might have been done by quarto-nav.js in the case of
+              // links that we want to consider external
+              if (link.dataset.originalHref !== undefined) {
+                link.href = link.dataset.originalHref;
+              }
+            }
+          }
+        function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+          const config = {
+            allowHTML: true,
+            maxWidth: 500,
+            delay: 100,
+            arrow: false,
+            appendTo: function(el) {
+                return el.closest('section.slide') || el.parentElement;
+            },
+            interactive: true,
+            interactiveBorder: 10,
+            theme: 'light-border',
+            placement: 'bottom-start',
+          };
+          if (contentFn) {
+            config.content = contentFn;
+          }
+          if (onTriggerFn) {
+            config.onTrigger = onTriggerFn;
+          }
+          if (onUntriggerFn) {
+            config.onUntrigger = onUntriggerFn;
+          }
+            config['offset'] = [0,0];
+            config['maxWidth'] = 700;
+          window.tippy(el, config); 
+        }
+        const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+        for (var i=0; i<noterefs.length; i++) {
+          const ref = noterefs[i];
+          tippyHover(ref, function() {
+            // use id or data attribute instead here
+            let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+            try { href = new URL(href).hash; } catch {}
+            const id = href.replace(/^#\/?/, "");
+            const note = window.document.getElementById(id);
+            if (note) {
+              return note.innerHTML;
+            } else {
+              return "";
+            }
+          });
+        }
+        const findCites = (el) => {
+          const parentEl = el.parentElement;
+          if (parentEl) {
+            const cites = parentEl.dataset.cites;
+            if (cites) {
+              return {
+                el,
+                cites: cites.split(' ')
+              };
+            } else {
+              return findCites(el.parentElement)
+            }
+          } else {
+            return undefined;
+          }
+        };
+        var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+        for (var i=0; i<bibliorefs.length; i++) {
+          const ref = bibliorefs[i];
+          const citeInfo = findCites(ref);
+          if (citeInfo) {
+            tippyHover(citeInfo.el, function() {
+              var popup = window.document.createElement('div');
+              citeInfo.cites.forEach(function(cite) {
+                var citeDiv = window.document.createElement('div');
+                citeDiv.classList.add('hanging-indent');
+                citeDiv.classList.add('csl-entry');
+                var biblioDiv = window.document.getElementById('ref-' + cite);
+                if (biblioDiv) {
+                  citeDiv.innerHTML = biblioDiv.innerHTML;
+                }
+                popup.appendChild(citeDiv);
+              });
+              return popup.innerHTML;
+            });
+          }
+        }
+      });
+      </script>
+    
+
+</body></html>
