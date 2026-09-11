@@ -139,6 +139,12 @@ ol {
   color: var(--muted);
 }
 
+.award {
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-style: italic;
+}
+
 @media (max-width: 480px) {
   main {
     padding: 2.5rem 1.25rem 4rem;

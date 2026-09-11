@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tobias Rubel</title>
-<meta name="description" content="Tobias Rubel is a PhD student in computer science at the University of Maryland, working on parallel algorithms and data structures for nearest neighbor search.">
+<meta name="description" content="Tobias Rubel is a PhD candidate in computer science at the University of Maryland, working on parallel algorithms and data structures for nearest neighbor search.">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -15,7 +15,7 @@
 
   <h1>Tobias Rubel</h1>
 
-  <p>I am a PhD student in computer science at the <a href="https://www.cs.umd.edu/">University of Maryland, College Park</a>, advised by <a href="https://www.cs.umd.edu/people/laxman">Laxman Dhulipala</a>. I am supported by an NSF Graduate Research Fellowship.</p>
+  <p>I am a PhD candidate in computer science at the <a href="https://www.cs.umd.edu/">University of Maryland, College Park</a>, advised by <a href="https://www.cs.umd.edu/people/laxman">Laxman Dhulipala</a>. I am supported by an NSF Graduate Research Fellowship.</p>
 
   <p>I work on parallel algorithms and data structures, mostly for similarity search. My current focus is making graph-based indexes for approximate nearest neighbor search fast to build as well as fast to query, at billion-point scale. I am also interested in uniquely represented (history-independent) data structures and in randomized parallel algorithms more broadly.</p>
 
@@ -26,8 +26,7 @@
     <li><a href="https://scholar.google.com/citations?user=UsSUNaMAAAAJ">Google Scholar</a></li>
     <li><a href="https://www.cs.umd.edu/people/trubel">UMD page</a></li>
     <li><a href="https://github.com/TobiasRubel">GitHub</a></li>
-    <!-- To add a CV: drop the file at cv.pdf and uncomment the line below. -->
-    <!-- <li><a href="cv.pdf">CV</a></li> -->
+    <li><a href="cv.pdf">CV</a></li>
   </ul>
 
   <h2>Research interests</h2>
@@ -47,9 +46,24 @@
   <ol class="pubs">
 
     <li>
-      <span class="ptitle"><a href="https://arxiv.org/abs/2602.21247">PiPNN: Ultra-Scalable Graph-Based Nearest Neighbor Indexing</a></span><br>
+      <span class="ptitle">Fast k-NN Graph Building with Quantized PiPNN and Filtering</span><br>
+      Tobias Rubel, Richard Wen, Guy Blelloch, Laxman Dhulipala, Lars Gottesbüren, Jakub Łącki, Vahab Mirrokni.<br>
+      <span class="venue">International Conference on Similarity Search and Applications (SISAP), 2026. To appear. <a href="https://github.com/TobiasRubel/sisap2026-task1-submit">Code</a>.</span><br>
+      <span class="award">First place, Task 1 of the SISAP 2026 Indexing Challenge</span>
+    </li>
+
+    <li>
+      <span class="ptitle"><a href="https://openreview.net/forum?id=8GzbSQMrLA">Turbocharging PiPNN for Proximity and k-NN Graph Building</a></span><br>
+      Tobias Rubel, Richard Wen, Guy Blelloch, Laxman Dhulipala, Lars Gottesbüren, Jakub Łącki, Vahab Mirrokni.<br>
+      <span class="venue">2nd Workshop on Vector Databases (VecDB) at VLDB, 2026. Full version under submission.</span><br>
+      <span class="award">Best Paper Award</span>
+    </li>
+
+    <li>
+      <span class="ptitle"><a href="https://doi.org/10.1145/3770855.3817891">PiPNN: A Framework for Ultra-Scalable Graph-Based Nearest Neighbor Indexing</a></span><br>
       Tobias Rubel, Richard Wen, Laxman Dhulipala, Lars Gottesbüren, Rajesh Jayaram, Jakub Łącki.<br>
-      <span class="venue">arXiv preprint, 2026.</span>
+      <span class="venue">ACM SIGKDD Conference on Knowledge Discovery and Data Mining (KDD), 2026. <a href="https://arxiv.org/abs/2602.21247">arXiv</a> · <a href="https://github.com/ParAlg/PiPNN">Code</a>.</span><br>
+      <span class="award">Best Paper Award, Research Track</span>
     </li>
 
     <li>
@@ -95,6 +109,13 @@
     </li>
 
   </ol>
+
+  <h2>Software</h2>
+
+  <ul class="interests">
+    <li><a href="https://github.com/ParAlg/PiPNN">PiPNN</a>: parallel C++ implementation of the PiPNN framework for building graph-based nearest neighbor indexes.</li>
+    <li><a href="https://github.com/jamshed/CaPS-SA">CaPS-SA</a>: parallel, cache-friendly suffix array construction.</li>
+  </ul>
 
 </main>
 </body>
